@@ -5,6 +5,9 @@ window.Config = {
     AUTH_DATA_PATH: 'data/auth.csv',
     DRIVE_DATA_PATH: 'data/drive.json',
     
+    // External data URLs (set these to use external Excel/CSV files)
+    AUTH_DATA_URL: null, // Set to Excel download URL, e.g., 'https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/export?format=csv&gid=0'
+    
     // Google Drive URLs
     DRIVE_DOWNLOAD_BASE: 'https://drive.google.com/uc?export=download&id=',
     DRIVE_PREVIEW_BASE: 'https://drive.google.com/uc?id=',
@@ -129,7 +132,13 @@ window.Config = {
         'text/plain',
         'text/html',
         'video/mp4',
-        'video/webm'
+        'video/webm',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-powerpoint',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation'
     ],
     
     // Maximum file size for preview (in bytes)
@@ -161,7 +170,7 @@ window.Config = {
     
     // Error messages
     ERROR_MESSAGES: {
-        AUTH_FAILED: 'Invalid credentials. Please check your manager selection and password.',
+        AUTH_FAILED: 'Invalid credentials. Please check your username and password.',
         AUTH_REQUIRED: 'Please log in to access the portal.',
         NETWORK_ERROR: 'Network error. Please check your connection and try again.',
         FILE_NOT_FOUND: 'File not found or access denied.',
@@ -263,34 +272,4 @@ window.Config = {
         return this.DRIVE_PREVIEW_BASE + fileId;
     },
     
-    getDriveEmbedURL(fileId) {
-        return `${this.DRIVE_EMBED_BASE}${fileId}/preview`;
-    },
-    
-    log(level, message, data = null) {
-        if (!this.DEBUG) return;
-        
-        const levels = ['debug', 'info', 'warn', 'error'];
-        const currentLevelIndex = levels.indexOf(this.LOG_LEVEL);
-        const messageLevelIndex = levels.indexOf(level);
-        
-        if (messageLevelIndex >= currentLevelIndex) {
-            const timestamp = new Date().toISOString();
-            const logMessage = `[${timestamp}] [${level.toUpperCase()}] ${message}`;
-            
-            if (data) {
-                console[level](logMessage, data);
-            } else {
-                console[level](logMessage);
-            }
-        }
-    }
-};
-
-// Freeze the configuration to prevent modifications
-Object.freeze(window.Config);
-
-// Export for modules (if using ES6 modules)
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = window.Config;
-}
+    getD
