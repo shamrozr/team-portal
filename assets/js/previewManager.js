@@ -224,11 +224,13 @@ class PreviewManager {
     }
     
     getPreviewURL(fileId) {
+        // Use direct view URL instead of export for better compatibility
         return `https://drive.google.com/uc?export=view&id=${fileId}`;
     }
     
     getEmbedURL(fileId) {
-        return `https://drive.google.com/file/d/${fileId}/preview`;
+        // Use the embed URL format that works better in iframes
+        return `https://drive.google.com/file/d/${fileId}/preview?usp=sharing`;
     }
     
     showPreviewUnavailable(file, customMessage = null) {
