@@ -24,37 +24,38 @@
         </div>
     </div>
 
-    <!-- Authentication Screen -->
-    <div id="authScreen" class="auth-screen hidden">
-        <div class="auth-container">
-            <div class="auth-header">
-                <h1>Team Portal Access</h1>
-                <p>Select your manager and enter your password to access team files</p>
+    <!-- Authentication Screen (Replace in index.html) -->
+<div id="authScreen" class="auth-screen hidden">
+    <div class="auth-container">
+        <div class="auth-header">
+            <h1>Team Portal Access</h1>
+            <p>Enter your username and password to access team files</p>
+        </div>
+        
+        <form id="authForm" class="auth-form">
+            <div class="form-group">
+                <label for="usernameInput">Username:</label>
+                <input type="text" id="usernameInput" required 
+                       placeholder="Enter your username (e.g., user1, user2...)"
+                       autocomplete="username">
             </div>
             
-            <form id="authForm" class="auth-form">
-                <div class="form-group">
-                    <label for="managerSelect">Team Manager:</label>
-                    <select id="managerSelect" required>
-                        <option value="">Select your manager...</option>
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label for="passwordInput">Password:</label>
-                    <input type="password" id="passwordInput" required 
-                           placeholder="Enter your password">
-                </div>
-                
-                <button type="submit" id="loginButton">
-                    <span>Access Portal</span>
-                    <div class="button-spinner hidden"></div>
-                </button>
-                
-                <div id="authError" class="auth-error hidden"></div>
-            </form>
-        </div>
+            <div class="form-group">
+                <label for="passwordInput">Password:</label>
+                <input type="password" id="passwordInput" required 
+                       placeholder="Enter your password"
+                       autocomplete="current-password">
+            </div>
+            
+            <button type="submit" id="loginButton">
+                <span>Access Portal</span>
+                <div class="button-spinner hidden"></div>
+            </button>
+            
+            <div id="authError" class="auth-error hidden"></div>
+        </form>
     </div>
+</div>
 
     <!-- Main Portal -->
     <div id="portalScreen" class="portal-screen hidden">
