@@ -1,197 +1,236 @@
-// assets/js/downloadManager.js - Mobile-optimized download manager
+// assets/js/downloadManager.js - Individual download button approach
 
 class DownloadManager {
     constructor() {
-        this.downloadQueueData = [];
-        this.activeDownloads = 0;
-        this.completedDownloads = 0;
-        this.failedDownloads = 0;
-        this.isDownloading = false;
+        this.downloadedFiles = new Set();
+        this.totalFilesToDownload = 0;
         this.isMobile = this.detectMobile();
         
-        this.createDownloadWidget();
         this.createDownloadFrame();
+        this.createDownloadModal();
         this.bindEvents();
     }
     
     detectMobile() {
-    const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    const isMobileScreen = window.innerWidth <= 768;
-    const isTouchDevice = 'ontouchstart' in window;
+        const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const isMobileScreen = window.innerWidth <= 768;
+        const isTouchDevice = 'ontouchstart' in window;
+        
+        return isMobileUA || (isMobileScreen && isTouchDevice);
+    }
     
-    return isMobileUA || (isMobileScreen && isTouchDevice);
-}
-    
-    createDownloadWidget() {
-        // Remove existing widget
-        const existing = document.getElementById('downloadWidget');
+    createDownloadModal() {
+        // Remove existing modal if it exists
+        const existing = document.getElementById('downloadModal');
         if (existing) existing.remove();
         
-        const widget = document.createElement('div');
-        widget.id = 'downloadWidget';
-        widget.className = 'download-widget hidden';
-        widget.innerHTML = `
-            <div class="download-header">
-                <div class="download-title">
-                    <span class="download-icon">📥</span>
-                    <span id="downloadHeaderText">Downloads</span>
+        const modal = document.createElement('div');
+        modal.id = 'downloadModal';
+        modal.className = 'download-modal hidden';
+        modal.innerHTML = `
+            <div class="download-modal-overlay"></div>
+            <div class="download-modal-container">
+                <div class="download-modal-header">
+                    <h3 id="downloadModalTitle">Download Files</h3>
+                    <button class="download-modal-close" id="closeDownloadModal">×</button>
                 </div>
-                <div class="download-actions">
-                    <button class="download-toggle" id="downloadToggle" title="Toggle download list">▼</button>
-                    <button class="download-close" id="downloadClose" title="Close downloads">×</button>
-                </div>
-            </div>
-            <div class="download-body" id="downloadBody">
-                <div class="download-list" id="downloadList">
-                    <!-- Download items will be added here -->
-                </div>
-                <div class="download-summary" id="downloadSummary">
-                    <div class="download-progress">
-                        <span id="downloadProgress">0 of 0 files</span>
-                        <div class="download-progress-bar">
-                            <div class="download-progress-fill" id="progressFill"></div>
+                <div class="download-modal-body">
+                    <div class="download-progress-summary">
+                        <div class="progress-text">
+                            <span id="downloadProgressText">0 of 0 files downloaded</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="downloadProgressFill"></div>
+                            </div>
                         </div>
                     </div>
-                    <div class="download-controls">
-                        <button class="download-btn cancel-btn" id="cancelAll">Cancel All</button>
+                    <div class="download-info">
+                        <p>📱 <strong>Mobile Users:</strong> Each file downloads directly to your Downloads folder. Tap each button individually for best results.</p>
+                        <p>💻 <strong>Desktop Users:</strong> Use "Download All at Once" for faster downloading, or click individual files.</p>
                     </div>
+                    <div class="download-file-list" id="downloadFileList">
+                        <!-- File list will be populated here -->
+                    </div>
+                </div>
+                <div class="download-modal-footer">
+                    <button class="btn btn-secondary" id="downloadAllAtOnce">Download All at Once</button>
+                    <button class="btn btn-primary" id="closeWhenDone">Close</button>
                 </div>
             </div>
         `;
         
-        this.addStyles();
-        document.body.appendChild(widget);
+        this.addModalStyles();
+        document.body.appendChild(modal);
+        this.bindModalEvents();
     }
     
-    addStyles() {
-        if (document.getElementById('downloadStyles')) return;
+    addModalStyles() {
+        if (document.getElementById('downloadModalStyles')) return;
         
         const style = document.createElement('style');
-        style.id = 'downloadStyles';
+        style.id = 'downloadModalStyles';
         style.textContent = `
-            .download-widget {
+            .download-modal {
                 position: fixed;
-                bottom: 20px;
-                right: 20px;
-                width: 320px;
-                max-width: calc(100vw - 40px);
-                background: white;
-                border-radius: 12px;
-                box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+                top: 0; left: 0; right: 0; bottom: 0;
                 z-index: 9999;
-                border: 1px solid #e2e8f0;
-                overflow: hidden;
-                transition: all 0.3s ease;
+                background: rgba(0,0,0,0.75);
+                backdrop-filter: blur(4px);
+                animation: fadeIn 0.3s ease-in-out;
+            }
+            .download-modal.hidden { display: none; }
+            
+            .download-modal-overlay {
+                position: absolute;
+                top: 0; left: 0; right: 0; bottom: 0;
             }
             
-            .download-widget.hidden { display: none; }
-            .download-widget.minimized .download-body { display: none; }
-            .download-widget.minimized { width: 200px; }
+            .download-modal-container {
+                position: absolute;
+                top: 50%; left: 50%;
+                transform: translate(-50%, -50%);
+                background: white;
+                border-radius: 12px;
+                box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+                max-width: 90vw;
+                max-height: 90vh;
+                width: 600px;
+                overflow: hidden;
+                animation: slideUp 0.3s ease-out;
+            }
             
-            .download-header {
+            .download-modal-header {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                padding: 12px 16px;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
-                cursor: pointer;
-            }
-            
-            .download-title {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                font-weight: 600;
-                font-size: 14px;
-            }
-            
-            .download-icon {
-                font-size: 16px;
-            }
-            
-            .download-actions {
-                display: flex;
-                gap: 4px;
-            }
-            
-            .download-toggle, .download-close {
-                background: rgba(255,255,255,0.2);
-                border: none;
-                color: white;
-                width: 24px;
-                height: 24px;
-                border-radius: 4px;
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 12px;
-                transition: background 0.2s;
-            }
-            
-            .download-toggle:hover, .download-close:hover {
-                background: rgba(255,255,255,0.3);
-            }
-            
-            .download-body {
-                max-height: 400px;
-                overflow: hidden;
-                display: flex;
-                flex-direction: column;
-            }
-            
-            .download-list {
-                max-height: 300px;
-                overflow-y: auto;
-                padding: 8px;
-            }
-            
-            .download-item {
-                display: flex;
-                align-items: center;
-                gap: 12px;
-                padding: 8px;
-                border-radius: 6px;
-                margin-bottom: 4px;
-                transition: background 0.2s;
-                font-size: 13px;
-            }
-            
-            .download-item:hover {
+                padding: 20px 24px;
+                border-bottom: 1px solid #e2e8f0;
                 background: #f8fafc;
             }
             
-            .download-item.downloading {
-                background: rgba(59, 130, 246, 0.1);
-                border-left: 3px solid #3b82f6;
+            .download-modal-header h3 {
+                margin: 0;
+                font-size: 1.25rem;
+                font-weight: 600;
+                color: #1f2937;
             }
             
-            .download-item.completed {
-                background: rgba(34, 197, 94, 0.1);
-                border-left: 3px solid #22c55e;
+            .download-modal-close {
+                background: none;
+                border: none;
+                font-size: 24px;
+                color: #6b7280;
+                cursor: pointer;
+                padding: 4px;
+                border-radius: 4px;
+                transition: background 0.2s;
+            }
+            .download-modal-close:hover {
+                background: #e5e7eb;
+                color: #374151;
             }
             
-            .download-item.failed {
-                background: rgba(239, 68, 68, 0.1);
-                border-left: 3px solid #ef4444;
+            .download-modal-body {
+                padding: 24px;
+                max-height: 60vh;
+                overflow-y: auto;
             }
             
-            .download-status-icon {
-                width: 20px;
-                height: 20px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 14px;
+            .download-progress-summary {
+                margin-bottom: 20px;
+                padding: 16px;
+                background: #f0f9ff;
+                border: 1px solid #bae6fd;
+                border-radius: 8px;
+            }
+            
+            .progress-text {
+                font-weight: 500;
+                color: #0c4a6e;
+                margin-bottom: 8px;
+                text-align: center;
+            }
+            
+            .progress-bar-container {
+                width: 100%;
+            }
+            
+            .progress-bar {
+                width: 100%;
+                height: 8px;
+                background: #e0f2fe;
+                border-radius: 4px;
+                overflow: hidden;
+            }
+            
+            .progress-fill {
+                height: 100%;
+                background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+                border-radius: 4px;
+                transition: width 0.3s ease;
+                width: 0%;
             }
             
             .download-info {
+                background: #fffbeb;
+                border: 1px solid #fde68a;
+                border-radius: 8px;
+                padding: 12px;
+                margin-bottom: 20px;
+                font-size: 14px;
+            }
+            
+            .download-info p {
+                margin: 4px 0;
+                color: #92400e;
+            }
+            
+            .download-file-list {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+            
+            .download-file-item {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 12px 16px;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                transition: all 0.2s;
+            }
+            
+            .download-file-item:hover {
+                border-color: #cbd5e1;
+                background: #f8fafc;
+            }
+            
+            .download-file-item.downloaded {
+                background: #ecfdf5;
+                border-color: #86efac;
+            }
+            
+            .file-item-info {
+                display: flex;
+                align-items: center;
+                gap: 12px;
                 flex: 1;
                 min-width: 0;
             }
             
-            .download-name {
+            .file-item-icon {
+                font-size: 20px;
+                flex-shrink: 0;
+            }
+            
+            .file-item-details {
+                min-width: 0;
+                flex: 1;
+            }
+            
+            .file-item-name {
                 font-weight: 500;
                 color: #1f2937;
                 white-space: nowrap;
@@ -200,177 +239,162 @@ class DownloadManager {
                 margin-bottom: 2px;
             }
             
-            .download-details {
-                font-size: 11px;
+            .file-item-size {
+                font-size: 12px;
                 color: #6b7280;
             }
             
-            .download-summary {
-                padding: 12px 16px;
-                background: #f8fafc;
-                border-top: 1px solid #e2e8f0;
+            .file-item-action {
+                flex-shrink: 0;
+                margin-left: 12px;
             }
             
-            .download-progress {
-                margin-bottom: 8px;
-            }
-            
-            .download-progress span {
-                font-size: 12px;
-                color: #374151;
-                font-weight: 500;
-            }
-            
-            .download-progress-bar {
-                width: 100%;
-                height: 4px;
-                background: #e2e8f0;
-                border-radius: 2px;
-                overflow: hidden;
-                margin-top: 4px;
-            }
-            
-            .download-progress-fill {
-                height: 100%;
-                background: linear-gradient(90deg, #3b82f6, #8b5cf6);
-                border-radius: 2px;
-                transition: width 0.3s ease;
-                width: 0%;
-            }
-            
-            .download-controls {
-                display: flex;
-                justify-content: center;
-            }
-            
-            .download-btn {
-                padding: 6px 12px;
+            .download-file-btn {
+                padding: 8px 16px;
+                background: #3b82f6;
+                color: white;
                 border: none;
                 border-radius: 6px;
-                font-size: 12px;
+                font-size: 14px;
                 font-weight: 500;
                 cursor: pointer;
                 transition: all 0.2s;
+                min-width: 100px;
             }
             
-            .cancel-btn {
-                background: #f3f4f6;
-                color: #374151;
+            .download-file-btn:hover:not(:disabled) {
+                background: #1d4ed8;
+                transform: translateY(-1px);
             }
             
-            .cancel-btn:hover {
-                background: #e5e7eb;
+            .download-file-btn:disabled {
+                background: #10b981;
+                cursor: default;
+                transform: none;
             }
             
-            .download-spinner {
-                width: 16px;
-                height: 16px;
-                border: 2px solid #e5e7eb;
-                border-top: 2px solid #3b82f6;
-                border-radius: 50%;
-                animation: spin 1s linear infinite;
+            .download-file-btn.downloaded {
+                background: #10b981;
             }
             
-            @keyframes spin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
+            .download-modal-footer {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 20px 24px;
+                border-top: 1px solid #e2e8f0;
+                background: #f8fafc;
             }
             
             /* Mobile optimizations */
             @media (max-width: 768px) {
-                .download-widget {
-                    bottom: 15px;
-                    right: 15px;
-                    width: 280px;
-                    max-width: calc(100vw - 30px);
+                .download-modal-container {
+                    width: 95vw;
+                    max-height: 95vh;
                 }
                 
-                .download-header {
-                    padding: 10px 12px;
+                .download-modal-header {
+                    padding: 16px 20px;
                 }
                 
-                .download-title {
+                .download-modal-body {
+                    padding: 20px;
+                }
+                
+                .file-item-info {
+                    gap: 8px;
+                }
+                
+                .file-item-name {
+                    font-size: 14px;
+                }
+                
+                .download-file-btn {
+                    padding: 6px 12px;
                     font-size: 13px;
+                    min-width: 80px;
                 }
                 
-                .download-list {
-                    max-height: 250px;
-                    padding: 6px;
+                .download-modal-footer {
+                    padding: 16px 20px;
+                    flex-direction: column;
+                    gap: 10px;
                 }
                 
-                .download-item {
-                    padding: 6px;
-                    font-size: 12px;
-                }
-                
-                .download-summary {
-                    padding: 10px 12px;
+                .download-modal-footer button {
+                    width: 100%;
                 }
             }
             
             @media (max-width: 480px) {
-                .download-widget {
-                    bottom: 10px;
-                    right: 10px;
-                    width: 260px;
-                    max-width: calc(100vw - 20px);
+                .download-file-item {
+                    padding: 10px 12px;
                 }
                 
-                .download-widget.minimized {
-                    width: 180px;
+                .file-item-details {
+                    min-width: 0;
                 }
                 
-                .download-header {
-                    padding: 8px 10px;
+                .file-item-name {
+                    font-size: 13px;
                 }
                 
-                .download-title {
+                .download-file-btn {
+                    padding: 5px 10px;
                     font-size: 12px;
+                    min-width: 70px;
                 }
-                
-                .download-list {
-                    max-height: 200px;
-                    padding: 4px;
-                }
-                
-                .download-item {
-                    padding: 5px;
-                    font-size: 11px;
-                    gap: 8px;
-                }
+            }
+            
+            @keyframes fadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+            }
+            
+            @keyframes slideUp {
+                from { transform: translate(-50%, -40%); opacity: 0; }
+                to { transform: translate(-50%, -50%); opacity: 1; }
             }
         `;
         document.head.appendChild(style);
     }
     
+    bindModalEvents() {
+        // Close modal
+        document.getElementById('closeDownloadModal').onclick = () => this.hideDownloadModal();
+        document.getElementById('closeWhenDone').onclick = () => this.hideDownloadModal();
+        
+        // Download all at once
+        document.getElementById('downloadAllAtOnce').onclick = () => this.downloadAllAtOnce();
+        
+        // Close on overlay click
+        document.querySelector('.download-modal-overlay').onclick = () => this.hideDownloadModal();
+        
+        // Prevent modal close when clicking inside
+        document.querySelector('.download-modal-container').onclick = (e) => e.stopPropagation();
+    }
+    
     bindEvents() {
-        const widget = document.getElementById('downloadWidget');
-        const toggle = document.getElementById('downloadToggle');
-        const close = document.getElementById('downloadClose');
-        const cancelAll = document.getElementById('cancelAll');
-        
-        // Header click to toggle
-        document.getElementById('downloadWidget').querySelector('.download-header').addEventListener('click', (e) => {
-            if (e.target === toggle || e.target === close) return;
-            this.toggleWidget();
-        });
-        
-        // Toggle button
-        toggle.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.toggleWidget();
-        });
-        
-        // Close button
-        close.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.hideWidget();
-        });
-        
-        // Cancel all button
-        cancelAll.addEventListener('click', () => {
-            this.cancelAllDownloads();
-        });
+        // Mobile-friendly events
+        if (this.isMobile) {
+            // Handle Android back button (if app is added to home screen)
+            window.addEventListener('popstate', (e) => {
+                const modal = document.getElementById('downloadModal');
+                if (modal && !modal.classList.contains('hidden')) {
+                    e.preventDefault();
+                    this.hideDownloadModal();
+                    history.pushState(null, null, window.location.href);
+                }
+            });
+        } else {
+            // Desktop-only: Escape key for users with keyboards
+            document.addEventListener('keydown', (e) => {
+                const modal = document.getElementById('downloadModal');
+                if (modal && !modal.classList.contains('hidden') && e.key === 'Escape') {
+                    this.hideDownloadModal();
+                }
+            });
+        }
     }
     
     createDownloadFrame() {
@@ -382,341 +406,139 @@ class DownloadManager {
         }
     }
     
+    // Main public method - called from file manager
     async downloadFiles(files) {
         if (!files || files.length === 0) {
             this.showToast('No files to download', 'warning');
             return;
         }
         
-        console.log(`Starting download of ${files.length} files`);
+        console.log(`Opening download modal for ${files.length} files`);
         
-        // Add files to queue
-        const queueItems = files.map(file => ({
-            id: file.id,
-            name: file.name,
-            mimeType: file.mimeType,
-            size: file.size,
-            status: 'queued',
-            progress: 0,
-            error: null,
-            retries: 0,
-            startTime: null,
-            endTime: null
-        }));
+        this.totalFilesToDownload = files.length;
+        this.downloadedFiles.clear();
         
-        this.downloadQueueData.push(...queueItems);
-        
-        // Show widget
-        this.showWidget();
-        this.updateUI();
-        
-        // Start processing
-        if (!this.isDownloading) {
-            this.processDownloadQueue();
-        }
-        
-        this.showToast(files.length === 1 ? 'Download started' : `Started downloading ${files.length} files`, 'success');
+        this.populateDownloadModal(files);
+        this.showDownloadModal();
     }
     
-    async processDownloadQueue() {
-        if (this.isDownloading) return;
+    populateDownloadModal(files) {
+        const fileList = document.getElementById('downloadFileList');
+        const modalTitle = document.getElementById('downloadModalTitle');
         
-        this.isDownloading = true;
-        this.activeDownloads = 0;
-        this.completedDownloads = 0;
-        this.failedDownloads = 0;
+        modalTitle.textContent = `Download Files (${files.length} selected)`;
+        fileList.innerHTML = '';
         
-        console.log(`Processing download queue: ${this.downloadQueueData.length} items`);
-        
-        try {
-            for (let i = 0; i < this.downloadQueueData.length; i++) {
-                const item = this.downloadQueueData[i];
-                
-                if (item.status === 'cancelled') continue;
-                
-                await this.downloadSingleFile(item);
-                
-                // Add delay between downloads
-                if (i < this.downloadQueueData.length - 1) {
-                    await this.delay(1000);
-                }
-            }
-            
-            this.onDownloadsComplete();
-            
-        } catch (error) {
-            console.error('Download queue processing failed:', error);
-        } finally {
-            this.isDownloading = false;
-        }
-    }
-    
-    async downloadSingleFile(item) {
-        try {
-            item.status = 'downloading';
-            item.startTime = Date.now();
-            this.activeDownloads++;
-            this.updateUI();
-            this.updateItemUI(item);
-            
-            console.log(`Downloading file: ${item.name}`);
-            
-            const downloadUrl = this.isMobile ? 
-                `https://drive.google.com/uc?export=download&id=${item.id}&confirm=t` :
-                `https://drive.google.com/uc?export=download&id=${item.id}`;
-            
-            // And for mobile, add this right after:
-            if (this.isMobile) {
-                // Force download on mobile
-                const link = document.createElement('a');
-                link.href = downloadUrl;
-                link.download = item.name;
-                link.style.display = 'none';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-            } else {
-                // Use iframe for desktop
-                await this.downloadWithIframe(downloadUrl, item.name);
-            }
-            
-            item.status = 'completed';
-            item.endTime = Date.now();
-            item.progress = 100;
-            this.completedDownloads++;
-            this.activeDownloads--;
-            
-            console.log(`File downloaded successfully: ${item.name}`);
-            
-        } catch (error) {
-            console.error(`Download failed for ${item.name}:`, error);
-            
-            if (item.retries < 3) {
-                item.retries++;
-                item.status = 'retrying';
-                this.updateItemUI(item);
-                
-                await this.delay(2000 * item.retries);
-                return this.downloadSingleFile(item);
-            } else {
-                item.status = 'failed';
-                item.error = error.message || 'Download failed';
-                item.endTime = Date.now();
-                this.failedDownloads++;
-                this.activeDownloads--;
-            }
-        }
-        
-        this.updateUI();
-        this.updateItemUI(item);
-    }
-    
-    downloadWithDirectLink(url, filename) {
-    return new Promise((resolve) => {
-        // Create a hidden iframe for seamless downloads
-        const downloadIframe = document.createElement('iframe');
-        downloadIframe.style.cssText = 'display: none; width: 0; height: 0;';
-        downloadIframe.src = url;
-        
-        document.body.appendChild(downloadIframe);
-        
-        // Clean up after download starts
-        setTimeout(() => {
-            document.body.removeChild(downloadIframe);
-            resolve();
-        }, 2000);
-    });
-}
-    
-    downloadWithIframe(url, filename) {
-        return new Promise((resolve, reject) => {
-            try {
-                this.downloadFrame.src = url;
-                
-                setTimeout(resolve, 1000);
-                
-                const errorHandler = () => {
-                    reject(new Error('Download request failed'));
-                };
-                
-                this.downloadFrame.addEventListener('error', errorHandler, { once: true });
-                
-                setTimeout(() => {
-                    this.downloadFrame.removeEventListener('error', errorHandler);
-                }, 5000);
-                
-            } catch (error) {
-                reject(error);
-            }
+        files.forEach(file => {
+            const fileItem = this.createFileItem(file);
+            fileList.appendChild(fileItem);
         });
-    }
-    
-    showWidget() {
-        const widget = document.getElementById('downloadWidget');
-        if (widget) {
-            widget.classList.remove('hidden');
-        }
-    }
-    
-    hideWidget() {
-        const widget = document.getElementById('downloadWidget');
-        if (widget && !this.isDownloading) {
-            widget.classList.add('hidden');
-            setTimeout(() => this.clearCompletedDownloads(), 1000);
-        }
-    }
-    
-    toggleWidget() {
-        const widget = document.getElementById('downloadWidget');
-        const toggle = document.getElementById('downloadToggle');
         
-        if (widget.classList.contains('minimized')) {
-            widget.classList.remove('minimized');
-            toggle.textContent = '▼';
-        } else {
-            widget.classList.add('minimized');
-            toggle.textContent = '▲';
-        }
+        this.updateProgress();
     }
     
-    updateUI() {
-        const totalFiles = this.downloadQueueData.length;
-        const completed = this.completedDownloads + this.failedDownloads;
-        const progress = totalFiles > 0 ? (completed / totalFiles) * 100 : 0;
+    createFileItem(file) {
+        const item = document.createElement('div');
+        item.className = 'download-file-item';
+        item.dataset.fileId = file.id;
         
-        // Update header text
-        const headerText = document.getElementById('downloadHeaderText');
-        if (headerText) {
-            if (this.isDownloading && this.activeDownloads > 0) {
-                headerText.textContent = `Downloading... (${this.activeDownloads})`;
+        const icon = Config.getFileIcon(file.mimeType, file.name);
+        const size = file.size ? Config.formatFileSize(file.size) : '';
+        
+        item.innerHTML = `
+            <div class="file-item-info">
+                <div class="file-item-icon">${icon}</div>
+                <div class="file-item-details">
+                    <div class="file-item-name" title="${this.sanitizeHTML(file.name)}">${this.sanitizeHTML(file.name)}</div>
+                    ${size ? `<div class="file-item-size">${size}</div>` : ''}
+                </div>
+            </div>
+            <div class="file-item-action">
+                <button class="download-file-btn" onclick="window.App.downloadManager.downloadSingleFile('${file.id}', '${this.sanitizeHTML(file.name)}')">
+                    Download
+                </button>
+            </div>
+        `;
+        
+        return item;
+    }
+    
+    downloadSingleFile(fileId, fileName) {
+        console.log(`Starting download for: ${fileName}`);
+        
+        const downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+        
+        try {
+            if (this.isMobile) {
+                // Mobile: Direct window.open (works better on mobile)
+                window.open(downloadUrl, '_blank');
             } else {
-                headerText.textContent = `Downloads (${totalFiles})`;
+                // Desktop: Use iframe method
+                this.downloadFrame.src = downloadUrl;
+            }
+            
+            // Mark as downloaded immediately (since we can't track actual completion)
+            this.markFileAsDownloaded(fileId);
+            
+            this.showToast(`Download started: ${fileName}`, 'success');
+            
+        } catch (error) {
+            console.error(`Download failed for ${fileName}:`, error);
+            this.showToast(`Download failed: ${fileName}`, 'error');
+        }
+    }
+    
+    markFileAsDownloaded(fileId) {
+        this.downloadedFiles.add(fileId);
+        
+        // Update UI for this file
+        const fileItem = document.querySelector(`[data-file-id="${fileId}"]`);
+        if (fileItem) {
+            fileItem.classList.add('downloaded');
+            
+            const button = fileItem.querySelector('.download-file-btn');
+            if (button) {
+                button.textContent = 'Downloaded ✓';
+                button.disabled = true;
+                button.classList.add('downloaded');
             }
         }
         
         // Update progress
-        const progressText = document.getElementById('downloadProgress');
-        const progressFill = document.getElementById('progressFill');
+        this.updateProgress();
+        
+        // Check if all files are downloaded
+        if (this.downloadedFiles.size === this.totalFilesToDownload) {
+            this.onAllFilesDownloaded();
+        }
+    }
+    
+    updateProgress() {
+        const progressText = document.getElementById('downloadProgressText');
+        const progressFill = document.getElementById('downloadProgressFill');
+        
+        const downloaded = this.downloadedFiles.size;
+        const total = this.totalFilesToDownload;
+        const percentage = total > 0 ? (downloaded / total) * 100 : 0;
         
         if (progressText) {
-            progressText.textContent = `${completed} of ${totalFiles} files`;
+            progressText.textContent = `${downloaded} of ${total} files downloaded`;
         }
         
         if (progressFill) {
-            progressFill.style.width = `${progress}%`;
-        }
-        
-        this.updateQueueUI();
-    }
-    
-    updateQueueUI() {
-        const downloadList = document.getElementById('downloadList');
-        if (!downloadList) return;
-        
-        downloadList.innerHTML = '';
-        
-        this.downloadQueueData.forEach(item => {
-            const itemElement = this.createQueueItemElement(item);
-            downloadList.appendChild(itemElement);
-        });
-    }
-    
-    createQueueItemElement(item) {
-        const element = document.createElement('div');
-        element.className = `download-item ${item.status}`;
-        element.setAttribute('data-id', item.id);
-        
-        const statusIcon = this.getStatusIcon(item.status);
-        const statusText = this.getStatusText(item);
-        
-        element.innerHTML = `
-            <div class="download-status-icon">${statusIcon}</div>
-            <div class="download-info">
-                <div class="download-name" title="${this.sanitizeHTML(item.name)}">${this.sanitizeHTML(item.name)}</div>
-                <div class="download-details">${statusText}${item.size ? ` • ${this.formatFileSize(item.size)}` : ''}</div>
-            </div>
-        `;
-        
-        return element;
-    }
-    
-    updateItemUI(item) {
-        const itemElement = document.querySelector(`[data-id="${item.id}"]`);
-        if (!itemElement) return;
-        
-        itemElement.className = `download-item ${item.status}`;
-        
-        const statusIcon = itemElement.querySelector('.download-status-icon');
-        const statusDetails = itemElement.querySelector('.download-details');
-        
-        if (statusIcon) {
-            statusIcon.innerHTML = this.getStatusIcon(item.status);
-        }
-        
-        if (statusDetails) {
-            const statusText = this.getStatusText(item);
-            statusDetails.innerHTML = `${statusText}${item.size ? ` • ${this.formatFileSize(item.size)}` : ''}`;
+            progressFill.style.width = `${percentage}%`;
         }
     }
     
-    getStatusIcon(status) {
-        switch (status) {
-            case 'queued': return '⏳';
-            case 'downloading': return '<div class="download-spinner"></div>';
-            case 'retrying': return '<div class="download-spinner"></div>';
-            case 'completed': return '✅';
-            case 'failed': return '❌';
-            case 'cancelled': return '⏹️';
-            default: return '❓';
-        }
-    }
-    
-    getStatusText(item) {
-        switch (item.status) {
-            case 'queued': return 'Queued';
-            case 'downloading': return 'Downloading...';
-            case 'retrying': return `Retrying... (${item.retries}/3)`;
-            case 'completed':
-                const duration = item.endTime && item.startTime ? 
-                    ` in ${((item.endTime - item.startTime) / 1000).toFixed(1)}s` : '';
-                return `Downloaded${duration}`;
-            case 'failed': return `Failed${item.error ? `: ${item.error}` : ''}`;
-            case 'cancelled': return 'Cancelled';
-            default: return 'Unknown';
-        }
-    }
-    
-    cancelAllDownloads() {
-        if (!this.isDownloading) {
-            this.showToast('No active downloads to cancel', 'info');
-            return;
-        }
+    onAllFilesDownloaded() {
+        this.showToast('🎉 All downloads started! Check your Downloads folder.', 'success');
         
-        this.downloadQueueData.forEach(item => {
-            if (item.status === 'queued' || item.status === 'downloading') {
-                item.status = 'cancelled';
-                item.endTime = Date.now();
-            }
-        });
-        
-        this.isDownloading = false;
-        this.activeDownloads = 0;
-        
-        this.updateUI();
-        this.showToast('Downloads cancelled', 'info');
-    }
-    
-    onDownloadsComplete() {
-        console.log('All downloads completed', {
-            total: this.downloadQueueData.length,
-            completed: this.completedDownloads,
-            failed: this.failedDownloads
-        });
-        
-        if (this.failedDownloads === 0) {
-            this.showToast('All downloads completed successfully!', 'success');
-        } else {
-            this.showToast(`Downloads completed with ${this.failedDownloads} failures`, 'warning');
+        // Update close button text
+        const closeBtn = document.getElementById('closeWhenDone');
+        if (closeBtn) {
+            closeBtn.textContent = 'All Done! 🎉';
+            closeBtn.classList.remove('btn-primary');
+            closeBtn.classList.add('btn-success');
         }
         
         // Clear selection in file manager
@@ -725,36 +547,49 @@ class DownloadManager {
         }
     }
     
-    clearCompletedDownloads() {
-        this.downloadQueueData = this.downloadQueueData.filter(item => 
-            item.status !== 'completed' && item.status !== 'failed' && item.status !== 'cancelled'
-        );
+    downloadAllAtOnce() {
+        // Trigger all downloads with slight delays
+        const remainingButtons = document.querySelectorAll('.download-file-btn:not(:disabled)');
         
-        this.completedDownloads = 0;
-        this.failedDownloads = 0;
+        if (remainingButtons.length === 0) {
+            this.showToast('All files already downloaded!', 'info');
+            return;
+        }
         
-        if (this.downloadQueueData.length === 0) {
-            this.updateUI();
+        remainingButtons.forEach((button, index) => {
+            setTimeout(() => {
+                button.click();
+            }, index * (this.isMobile ? 2000 : 1000)); // Longer delays on mobile
+        });
+        
+        this.showToast(`Starting ${remainingButtons.length} downloads...`, 'info');
+    }
+    
+    showDownloadModal() {
+        const modal = document.getElementById('downloadModal');
+        if (modal) {
+            modal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
         }
     }
     
-    // Utility methods
-    delay(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
+    hideDownloadModal() {
+        const modal = document.getElementById('downloadModal');
+        if (modal) {
+            modal.classList.add('hidden');
+            document.body.style.overflow = '';
+        }
+        
+        // Reset state
+        this.downloadedFiles.clear();
+        this.totalFilesToDownload = 0;
     }
     
+    // Utility methods
     sanitizeHTML(text) {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
-    }
-    
-    formatFileSize(bytes) {
-        if (!bytes || bytes === 0) return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
     
     showToast(message, type = 'info') {
@@ -770,11 +605,15 @@ class DownloadManager {
     
     // Public API
     hasActiveDownloads() {
-        return this.isDownloading;
+        return this.downloadedFiles.size > 0 && this.downloadedFiles.size < this.totalFilesToDownload;
     }
     
-    getQueueLength() {
-        return this.downloadQueueData.length;
+    getDownloadProgress() {
+        return {
+            downloaded: this.downloadedFiles.size,
+            total: this.totalFilesToDownload,
+            percentage: this.totalFilesToDownload > 0 ? (this.downloadedFiles.size / this.totalFilesToDownload) * 100 : 0
+        };
     }
 }
 
