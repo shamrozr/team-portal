@@ -2,7 +2,7 @@
 
 class DownloadManager {
     constructor() {
-        this.downloadQueue = [];
+        this.downloadQueueData = []; // Renamed to avoid conflict
         this.activeDownloads = 0;
         this.completedDownloads = 0;
         this.failedDownloads = 0;
@@ -10,7 +10,7 @@ class DownloadManager {
         
         // DOM elements
         this.downloadModal = Utils.dom.select('#downloadModal');
-        this.downloadQueue = Utils.dom.select('#downloadQueue');
+        this.downloadQueueElement = Utils.dom.select('#downloadQueue'); // Renamed for clarity
         this.downloadProgress = Utils.dom.select('#downloadProgress');
         this.downloadStatus = Utils.dom.select('#downloadStatus');
         this.cancelDownloads = Utils.dom.select('#cancelDownloads');
@@ -83,7 +83,7 @@ class DownloadManager {
             endTime: null
         }));
         
-        this.downloadQueue.push(...queueItems);
+        this.downloadQueueData.push(...queueItems);
         
         // Show download modal
         this.showDownloadModal();
@@ -113,12 +113,12 @@ class DownloadManager {
         this.completedDownloads = 0;
         this.failedDownloads = 0;
         
-        Config.log('debug', `Processing download queue: ${this.downloadQueue.length} items`);
+        Config.log('debug', `Processing download queue: ${this.downloadQueueData.length} items`);
         
         try {
             // Process downloads sequentially to avoid overwhelming the browser
-            for (let i = 0; i < this.downloadQueue.length; i++) {
-                const item = this.downloadQueue[i];
+            for (let i = 0; i < this.downloadQueueData.length; i++) {
+                const item = this.downloadQueueData[i];
                 
                 if (item.status === 'cancelled') {
                     continue;
@@ -127,7 +127,7 @@ class DownloadManager {
                 await this.downloadSingleFile(item);
                 
                 // Add delay between downloads to prevent rate limiting
-                if (i < this.downloadQueue.length - 1) {
+                if (i < this.downloadQueueData.length - 1) {
                     await Utils.delay(Config.DOWNLOAD_SETTINGS.DOWNLOAD_DELAY);
                 }
             }
@@ -251,7 +251,7 @@ class DownloadManager {
     }
     
     updateDownloadUI() {
-        const totalFiles = this.downloadQueue.length;
+        const totalFiles = this.downloadQueueData.length;
         const completed = this.completedDownloads + this.failedDownloads;
         
         // Update progress text
@@ -290,13 +290,13 @@ class DownloadManager {
     }
     
     updateQueueUI() {
-        if (!this.downloadQueue) return;
+        if (!this.downloadQueueElement) return;
         
-        this.downloadQueue.innerHTML = '';
+        this.downloadQueueElement.innerHTML = '';
         
-        this.downloadQueue.forEach(item => {
+        this.downloadQueueData.forEach(item => {
             const itemElement = this.createQueueItemElement(item);
-            this.downloadQueue.appendChild(itemElement);
+            this.downloadQueueElement.appendChild(itemElement);
         });
     }
     
@@ -402,7 +402,7 @@ class DownloadManager {
         Config.log('info', 'Cancelling all downloads');
         
         // Mark all queued items as cancelled
-        this.downloadQueue.forEach(item => {
+        this.downloadQueueData.forEach(item => {
             if (item.status === 'queued' || item.status === 'downloading') {
                 item.status = 'cancelled';
                 item.endTime = Date.now();
@@ -419,7 +419,7 @@ class DownloadManager {
     
     onDownloadsComplete() {
         Config.log('info', 'All downloads completed', {
-            total: this.downloadQueue.length,
+            total: this.downloadQueueData.length,
             completed: this.completedDownloads,
             failed: this.failedDownloads
         });
@@ -439,14 +439,14 @@ class DownloadManager {
     
     clearCompletedDownloads() {
         // Remove completed and failed downloads from queue
-        this.downloadQueue = this.downloadQueue.filter(item => 
+        this.downloadQueueData = this.downloadQueueData.filter(item => 
             item.status !== 'completed' && item.status !== 'failed' && item.status !== 'cancelled'
         );
         
         this.completedDownloads = 0;
         this.failedDownloads = 0;
         
-        if (this.downloadQueue.length === 0) {
+        if (this.downloadQueueData.length === 0) {
             this.updateDownloadUI();
         }
     }
@@ -454,7 +454,7 @@ class DownloadManager {
     // Public API methods
     getQueueStatus() {
         return {
-            total: this.downloadQueue.length,
+            total: this.downloadQueueData.length,
             active: this.activeDownloads,
             completed: this.completedDownloads,
             failed: this.failedDownloads,
@@ -467,7 +467,7 @@ class DownloadManager {
     }
     
     getQueueLength() {
-        return this.downloadQueue.length;
+        return this.downloadQueueData.length;
     }
     
     clearQueue() {
@@ -476,7 +476,7 @@ class DownloadManager {
             return false;
         }
         
-        this.downloadQueue = [];
+        this.downloadQueueData = [];
         this.completedDownloads = 0;
         this.failedDownloads = 0;
         this.updateDownloadUI();
