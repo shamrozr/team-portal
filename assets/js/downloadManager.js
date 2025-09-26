@@ -1,10 +1,11 @@
-// assets/js/downloadManager.js - Client-side ZIP download manager
+// assets/js/downloadManager.js - Simple individual downloads only
 
 class DownloadManager {
     constructor() {
         this.isMobile = this.detectMobile();
+        this.downloadQueue = [];
+        this.isProcessing = false;
         this.addFileDownloadButtonStyles();
-        this.loadZipLibrary();
     }
     
     detectMobile() {
@@ -13,42 +14,6 @@ class DownloadManager {
         const isTouchDevice = 'ontouchstart' in window;
         
         return isMobileUA || (isMobileScreen && isTouchDevice);
-    }
-    
-    // Load fflate library for ZIP creation
-    loadZipLibrary() {
-        if (window.fflate) {
-            console.log('fflate already loaded');
-            return;
-        }
-        
-        // Try multiple CDN sources
-        const cdnUrls = [
-            'https://unpkg.com/fflate@0.8.2/lib/index.js',
-            'https://cdn.jsdelivr.net/npm/fflate@0.8.2/lib/index.js',
-            'https://cdnjs.cloudflare.com/ajax/libs/fflate/0.8.2/index.min.js'
-        ];
-        
-        this.tryLoadFromCDN(cdnUrls, 0);
-    }
-    
-    tryLoadFromCDN(urls, index) {
-        if (index >= urls.length) {
-            console.error('All CDN sources failed, falling back to basic download');
-            this.zipLibraryFailed = true;
-            return;
-        }
-        
-        const script = document.createElement('script');
-        script.src = urls[index];
-        script.onload = () => {
-            console.log(`fflate library loaded successfully from: ${urls[index]}`);
-        };
-        script.onerror = () => {
-            console.warn(`Failed to load from ${urls[index]}, trying next CDN...`);
-            this.tryLoadFromCDN(urls, index + 1);
-        };
-        document.head.appendChild(script);
     }
     
     // Add styles for individual file download buttons
@@ -93,6 +58,16 @@ class DownloadManager {
                 transform: scale(0.95);
             }
             
+            .file-download-btn.downloading {
+                background: rgba(245, 158, 11, 0.9);
+                animation: pulse 1s infinite;
+            }
+            
+            @keyframes pulse {
+                0%, 100% { opacity: 0.9; }
+                50% { opacity: 0.6; }
+            }
+            
             /* Mobile: Always show download buttons */
             @media (max-width: 768px) {
                 .file-download-btn {
@@ -118,60 +93,17 @@ class DownloadManager {
             .file-item {
                 position: relative;
             }
-            
-            /* Download progress overlay */
-            .download-progress-overlay {
-                position: fixed;
-                top: 0; left: 0; right: 0; bottom: 0;
-                background: rgba(0, 0, 0, 0.8);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                z-index: 10000;
-                color: white;
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            }
-            
-            .download-progress-content {
-                text-align: center;
-                background: rgba(255, 255, 255, 0.1);
-                padding: 2rem;
-                border-radius: 12px;
-                backdrop-filter: blur(10px);
-            }
-            
-            .download-progress-content h3 {
-                margin: 0 0 1rem 0;
-                font-size: 1.2rem;
-            }
-            
-            .download-progress-content p {
-                margin: 0.5rem 0;
-                opacity: 0.8;
-            }
-            
-            .download-spinner {
-                width: 40px;
-                height: 40px;
-                border: 3px solid rgba(255, 255, 255, 0.3);
-                border-top: 3px solid white;
-                border-radius: 50%;
-                animation: spin 1s linear infinite;
-                margin: 1rem auto;
-            }
-            
-            @keyframes spin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
-            }
         `;
         
         document.head.appendChild(style);
     }
     
-    // Add download button to individual files
+    // Add download button to individual files (called by file manager)
     addDownloadButtonToFile(fileElement, file) {
+        // Don't add button to folders
         if (file.type === 'folder') return;
+        
+        // Check if button already exists
         if (fileElement.querySelector('.file-download-btn')) return;
         
         const downloadBtn = document.createElement('button');
@@ -180,212 +112,112 @@ class DownloadManager {
         downloadBtn.title = `Download ${file.name}`;
         downloadBtn.onclick = (e) => {
             e.stopPropagation();
-            this.downloadSingleFile(file.id, file.name);
+            this.queueDownload(file.id, file.name, downloadBtn);
         };
         
+        // Add to file element
         const fileContent = fileElement.querySelector('.file-content');
         if (fileContent) {
             fileContent.appendChild(downloadBtn);
         }
     }
     
-    // Download single file (direct method)
+    // Queue download with 1-second delay
+    queueDownload(fileId, fileName, buttonElement) {
+        // Add to queue
+        this.downloadQueue.push({
+            fileId,
+            fileName,
+            buttonElement
+        });
+        
+        // Show queued state
+        if (buttonElement) {
+            buttonElement.classList.add('downloading');
+            buttonElement.innerHTML = '⏳';
+            buttonElement.disabled = true;
+        }
+        
+        // Process queue if not already processing
+        if (!this.isProcessing) {
+            this.processQueue();
+        }
+    }
+    
+    // Process download queue with 1-second delays
+    async processQueue() {
+        if (this.isProcessing || this.downloadQueue.length === 0) return;
+        
+        this.isProcessing = true;
+        
+        while (this.downloadQueue.length > 0) {
+            const { fileId, fileName, buttonElement } = this.downloadQueue.shift();
+            
+            try {
+                // Start download
+                this.downloadSingleFile(fileId, fileName);
+                
+                // Update button state
+                if (buttonElement) {
+                    buttonElement.innerHTML = '✓';
+                    buttonElement.classList.remove('downloading');
+                    buttonElement.style.background = 'rgba(34, 197, 94, 0.9)';
+                }
+                
+                // Wait 1 second before next download
+                if (this.downloadQueue.length > 0) {
+                    await this.delay(1000);
+                }
+                
+            } catch (error) {
+                console.error(`Download failed for ${fileName}:`, error);
+                
+                // Update button to show error
+                if (buttonElement) {
+                    buttonElement.innerHTML = '❌';
+                    buttonElement.classList.remove('downloading');
+                    buttonElement.style.background = 'rgba(239, 68, 68, 0.9)';
+                }
+            }
+        }
+        
+        this.isProcessing = false;
+    }
+    
+    // Download single file
     downloadSingleFile(fileId, fileName) {
-        console.log(`Starting single file download: ${fileName}`);
+        console.log(`Starting download: ${fileName}`);
         
         const downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
         
-        try {
-            const anchor = document.createElement('a');
-            anchor.href = downloadUrl;
-            anchor.download = fileName || '';
-            anchor.style.display = 'none';
-            
-            document.body.appendChild(anchor);
-            anchor.click();
-            document.body.removeChild(anchor);
-            
-            this.showToast(`Download started: ${fileName}`, 'success');
-            
-        } catch (error) {
-            console.error(`Download failed for ${fileName}:`, error);
-            this.showToast(`Download failed: ${fileName}`, 'error');
-        }
-    }
-    
-    // Multi-file download using ZIP method (with fallback)
-    async downloadFiles(files) {
-        if (!files || files.length === 0) {
-            this.showToast('No files to download', 'warning');
-            return;
-        }
-        
-        // If ZIP library failed to load, fall back to individual downloads
-        if (!window.fflate || this.zipLibraryFailed) {
-            console.log('ZIP library not available, falling back to individual downloads');
-            this.fallbackDownload(files);
-            return;
-        }
-        
-        console.log(`Starting ZIP download: ${files.length} files`);
-        
-        // Show progress overlay
-        this.showProgressOverlay('Preparing downloads...');
-        
-        try {
-            // Create ZIP archive
-            await this.createAndDownloadZip(files);
-            
-            // Clear selection after successful download
-            if (window.App?.fileManager) {
-                window.App.fileManager.clearSelection();
-            }
-            
-        } catch (error) {
-            console.error('ZIP download failed:', error);
-            this.showToast('ZIP download failed. Trying individual downloads...', 'warning');
-            this.hideProgressOverlay();
-            // Fallback to individual downloads
-            this.fallbackDownload(files);
-        }
-    }
-    
-    // Fallback: Download files individually with delays
-    fallbackDownload(files) {
-        this.showToast(`Starting ${files.length} individual downloads...`, 'info');
-        
-        files.forEach((file, index) => {
-            setTimeout(() => {
-                this.downloadSingleFile(file.id, file.name);
-            }, index * 1000); // 1 second delays
-        });
-        
-        // Clear selection after starting downloads
-        if (window.App?.fileManager) {
-            window.App.fileManager.clearSelection();
-        }
-    }
-    
-    // Create ZIP archive and trigger download
-    async createAndDownloadZip(files) {
-        const zipData = {};
-        let completedFiles = 0;
-        
-        // Download all files as blobs
-        for (const file of files) {
-            try {
-                this.updateProgress(`Downloading ${file.name}... (${completedFiles + 1}/${files.length})`);
-                
-                const downloadUrl = `https://drive.google.com/uc?export=download&id=${file.id}`;
-                const response = await fetch(downloadUrl);
-                
-                if (!response.ok) {
-                    throw new Error(`Failed to download ${file.name}: ${response.status}`);
-                }
-                
-                const arrayBuffer = await response.arrayBuffer();
-                const uint8Array = new Uint8Array(arrayBuffer);
-                
-                // Add to ZIP data with sanitized filename
-                const safeFileName = this.sanitizeFileName(file.name);
-                zipData[safeFileName] = uint8Array;
-                
-                completedFiles++;
-                console.log(`Downloaded: ${file.name} (${uint8Array.length} bytes)`);
-                
-            } catch (error) {
-                console.error(`Failed to download ${file.name}:`, error);
-                // Continue with other files instead of failing completely
-            }
-        }
-        
-        if (Object.keys(zipData).length === 0) {
-            throw new Error('No files were successfully downloaded');
-        }
-        
-        // Create ZIP archive
-        this.updateProgress('Creating ZIP archive...');
-        
-        const zipUint8Array = window.fflate.zipSync(zipData, {
-            level: 6, // Compression level (0-9, 6 is good balance)
-            comment: `Created by Team Portal - ${new Date().toLocaleDateString()}`
-        });
-        
-        // Create blob and download
-        this.updateProgress('Preparing download...');
-        
-        const zipBlob = new Blob([zipUint8Array], { type: 'application/zip' });
-        const zipUrl = URL.createObjectURL(zipBlob);
-        
-        // Generate ZIP filename
-        const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-        const zipFileName = `files-${timestamp}.zip`;
-        
-        // Trigger download
         const anchor = document.createElement('a');
-        anchor.href = zipUrl;
-        anchor.download = zipFileName;
+        anchor.href = downloadUrl;
+        anchor.download = fileName || '';
         anchor.style.display = 'none';
         
         document.body.appendChild(anchor);
         anchor.click();
         document.body.removeChild(anchor);
         
-        // Clean up
-        setTimeout(() => {
-            URL.revokeObjectURL(zipUrl);
-        }, 1000);
-        
-        this.showToast(`ZIP archive created: ${zipFileName} (${Object.keys(zipData).length} files)`, 'success');
+        this.showToast(`Download started: ${fileName}`, 'success');
     }
     
-    // Show progress overlay
-    showProgressOverlay(message) {
-        // Remove existing overlay
-        this.hideProgressOverlay();
-        
-        const overlay = document.createElement('div');
-        overlay.id = 'downloadProgressOverlay';
-        overlay.className = 'download-progress-overlay';
-        overlay.innerHTML = `
-            <div class="download-progress-content">
-                <h3>Creating Download Archive</h3>
-                <div class="download-spinner"></div>
-                <p id="progressMessage">${message}</p>
-            </div>
-        `;
-        
-        document.body.appendChild(overlay);
-        document.body.style.overflow = 'hidden';
-    }
-    
-    // Update progress message
-    updateProgress(message) {
-        const progressMessage = document.getElementById('progressMessage');
-        if (progressMessage) {
-            progressMessage.textContent = message;
+    // Multi-file download - NOT SUPPORTED (removed)
+    async downloadFiles(files) {
+        if (!files || files.length === 0) {
+            this.showToast('No files to download', 'warning');
+            return;
         }
-    }
-    
-    // Hide progress overlay
-    hideProgressOverlay() {
-        const overlay = document.getElementById('downloadProgressOverlay');
-        if (overlay) {
-            overlay.remove();
-        }
-        document.body.style.overflow = '';
-    }
-    
-    // Sanitize filename for ZIP archive
-    sanitizeFileName(fileName) {
-        // Remove or replace characters that might cause issues in ZIP files
-        return fileName
-            .replace(/[<>:"/\\|?*]/g, '_') // Replace invalid characters
-            .replace(/\s+/g, '_') // Replace spaces with underscores
-            .substring(0, 255); // Limit length
+        
+        // Show message that bulk download is not supported
+        this.showToast('Please use individual download buttons on each file', 'info');
     }
     
     // Utility methods
+    delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+    
     showToast(message, type = 'info') {
         if (window.Utils && window.Utils.showToast) {
             if (type === 'success') window.Utils.showSuccess(message);
@@ -399,11 +231,11 @@ class DownloadManager {
     
     // Public API
     hasActiveDownloads() {
-        return !!document.getElementById('downloadProgressOverlay');
+        return this.isProcessing || this.downloadQueue.length > 0;
     }
     
     getQueueLength() {
-        return 0; // No queue system with ZIP method
+        return this.downloadQueue.length;
     }
 }
 
