@@ -79,12 +79,6 @@ class PreviewManager {
             this.currentIndex = 0;
         }
         
-        // Check if file is previewable
-        if (!Config.isPreviewable(file.mimeType, file.size)) {
-            this.showPreviewUnavailable(file);
-            return;
-        }
-        
         // Update modal title
         if (this.previewTitle) {
             this.previewTitle.textContent = file.name;
@@ -115,8 +109,8 @@ class PreviewManager {
                 this.loadPDFPreview(file);
             } else if (mimeType.startsWith('video/')) {
                 this.loadVideoPreview(file);
-            } else if (mimeType.startsWith('text/')) {
-                this.loadTextPreview(file);
+            } else if (mimeType.startsWith('text/') || this.isDocumentType(mimeType)) {
+                this.loadDocumentPreview(file);
             } else {
                 this.showPreviewUnavailable(file);
             }
@@ -129,9 +123,9 @@ class PreviewManager {
     
     loadImagePreview(file) {
         const img = Utils.dom.create('img', {
-            src: Config.getDrivePreviewURL(file.id),
+            src: this.getPreviewURL(file.id),
             alt: file.name,
-            style: 'max-width: 100%; max-height: 500px; object-fit: contain;'
+            style: 'max-width: 100%; max-height: 500px; object-fit: contain; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);'
         });
         
         img.addEventListener('load', () => {
@@ -145,15 +139,17 @@ class PreviewManager {
     }
     
     loadPDFPreview(file) {
-        const embedUrl = Config.getDriveEmbedURL(file.id);
+        const embedUrl = this.getEmbedURL(file.id);
         
         const iframe = Utils.dom.create('iframe', {
             src: embedUrl,
-            style: 'width: 100%; height: 500px; border: none; border-radius: 8px;'
+            style: 'width: 100%; height: 600px; border: none; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);',
+            sandbox: 'allow-scripts allow-same-origin allow-popups'
         });
         
         iframe.addEventListener('load', () => {
             // PDF loaded successfully
+            Config.log('debug', 'PDF preview loaded successfully');
         });
         
         iframe.addEventListener('error', () => {
@@ -165,32 +161,74 @@ class PreviewManager {
     }
     
     loadVideoPreview(file) {
-        const video = Utils.dom.create('video', {
-            controls: true,
-            style: 'max-width: 100%; max-height: 500px;',
-            preload: 'metadata'
+        // For videos, we'll also use iframe for better compatibility
+        const embedUrl = this.getEmbedURL(file.id);
+        
+        const iframe = Utils.dom.create('iframe', {
+            src: embedUrl,
+            style: 'width: 100%; height: 500px; border: none; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);',
+            sandbox: 'allow-scripts allow-same-origin allow-popups',
+            allow: 'autoplay; encrypted-media'
         });
         
-        const source = Utils.dom.create('source', {
-            src: Config.getDrivePreviewURL(file.id),
-            type: file.mimeType
+        iframe.addEventListener('load', () => {
+            Config.log('debug', 'Video preview loaded successfully');
         });
         
-        video.appendChild(source);
-        
-        video.addEventListener('loadedmetadata', () => {
-            this.previewContent.innerHTML = '';
-            this.previewContent.appendChild(video);
-        });
-        
-        video.addEventListener('error', () => {
+        iframe.addEventListener('error', () => {
             this.showPreviewError(file, new Error('Failed to load video'));
         });
+        
+        this.previewContent.innerHTML = '';
+        this.previewContent.appendChild(iframe);
     }
     
-    loadTextPreview(file) {
-        // For text files, we'll show a message about downloading to view
-        this.showPreviewUnavailable(file, 'Text files need to be downloaded to view their contents.');
+    loadDocumentPreview(file) {
+        // For documents (Word, Excel, PowerPoint), use Google Drive viewer
+        const embedUrl = this.getEmbedURL(file.id);
+        
+        const iframe = Utils.dom.create('iframe', {
+            src: embedUrl,
+            style: 'width: 100%; height: 600px; border: none; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);',
+            sandbox: 'allow-scripts allow-same-origin allow-popups'
+        });
+        
+        iframe.addEventListener('load', () => {
+            Config.log('debug', 'Document preview loaded successfully');
+        });
+        
+        iframe.addEventListener('error', () => {
+            this.showPreviewUnavailable(file, 'Document preview not available. Click download to view the file.');
+        });
+        
+        this.previewContent.innerHTML = '';
+        this.previewContent.appendChild(iframe);
+    }
+    
+    isDocumentType(mimeType) {
+        const documentTypes = [
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.ms-excel',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/vnd.ms-powerpoint',
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            'text/plain',
+            'text/html',
+            'text/css',
+            'text/javascript',
+            'application/json'
+        ];
+        
+        return documentTypes.includes(mimeType);
+    }
+    
+    getPreviewURL(fileId) {
+        return `https://drive.google.com/uc?export=view&id=${fileId}`;
+    }
+    
+    getEmbedURL(fileId) {
+        return `https://drive.google.com/file/d/${fileId}/preview`;
     }
     
     showPreviewUnavailable(file, customMessage = null) {
@@ -200,15 +238,21 @@ class PreviewManager {
         const content = Utils.dom.create('div', {
             className: 'preview-unavailable',
             innerHTML: `
-                <div style="text-align: center; padding: 2rem; color: #6B7280;">
-                    <div style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;">
+                <div style="text-align: center; padding: 3rem; color: #6B7280;">
+                    <div style="font-size: 4rem; margin-bottom: 1.5rem; opacity: 0.5;">
                         ${Config.getFileIcon(file.mimeType, file.name)}
                     </div>
-                    <h3 style="margin-bottom: 0.5rem; color: #374151;">${Utils.sanitizeHTML(file.name)}</h3>
-                    <p style="margin-bottom: 1rem;">${message}</p>
-                    <button class="btn btn-primary" onclick="window.App.previewManager.downloadCurrentFile()">
-                        Download File
-                    </button>
+                    <h3 style="margin-bottom: 1rem; color: #374151; font-size: 1.25rem;">${Utils.sanitizeHTML(file.name)}</h3>
+                    <p style="margin-bottom: 2rem; line-height: 1.6; max-width: 400px; margin-left: auto; margin-right: auto;">${message}</p>
+                    <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+                        <button class="btn btn-primary" onclick="window.App.previewManager.downloadCurrentFile()">
+                            📥 Download File
+                        </button>
+                        <button class="btn btn-outline" onclick="window.App.previewManager.openInNewTab()">
+                            🔗 Open in Drive
+                        </button>
+                    </div>
+                    ${file.size ? `<p style="margin-top: 1rem; font-size: 0.875rem; color: #9CA3AF;">File size: ${Config.formatFileSize(file.size)}</p>` : ''}
                 </div>
             `
         });
@@ -223,18 +267,21 @@ class PreviewManager {
         const content = Utils.dom.create('div', {
             className: 'preview-error',
             innerHTML: `
-                <div style="text-align: center; padding: 2rem; color: #EF4444;">
-                    <div style="font-size: 3rem; margin-bottom: 1rem;">❌</div>
-                    <h3 style="margin-bottom: 0.5rem; color: #374151;">Preview Error</h3>
-                    <p style="margin-bottom: 1rem; color: #6B7280;">
-                        Failed to load preview for ${Utils.sanitizeHTML(file.name)}
+                <div style="text-align: center; padding: 3rem; color: #EF4444;">
+                    <div style="font-size: 4rem; margin-bottom: 1.5rem;">❌</div>
+                    <h3 style="margin-bottom: 1rem; color: #374151; font-size: 1.25rem;">Preview Error</h3>
+                    <p style="margin-bottom: 2rem; color: #6B7280; line-height: 1.6;">
+                        Failed to load preview for <strong>${Utils.sanitizeHTML(file.name)}</strong>
                     </p>
-                    <div style="display: flex; gap: 0.5rem; justify-content: center;">
+                    <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
                         <button class="btn btn-outline" onclick="window.App.previewManager.loadPreviewContent(window.App.previewManager.currentFile)">
-                            Retry
+                            🔄 Retry Preview
                         </button>
                         <button class="btn btn-primary" onclick="window.App.previewManager.downloadCurrentFile()">
-                            Download Instead
+                            📥 Download Instead
+                        </button>
+                        <button class="btn btn-outline" onclick="window.App.previewManager.openInNewTab()">
+                            🔗 Open in Drive
                         </button>
                     </div>
                 </div>
@@ -243,6 +290,13 @@ class PreviewManager {
         
         this.previewContent.innerHTML = '';
         this.previewContent.appendChild(content);
+    }
+    
+    openInNewTab() {
+        if (this.currentFile) {
+            const driveUrl = `https://drive.google.com/file/d/${this.currentFile.id}/view`;
+            window.open(driveUrl, '_blank', 'noopener,noreferrer');
+        }
     }
     
     updateNavigation() {
@@ -366,7 +420,7 @@ class PreviewManager {
         if (!file) return false;
         
         const mimeType = file.mimeType || Utils.getMimeType(file.name);
-        return Config.isPreviewable(mimeType, file.size);
+        return Config.isPreviewable(mimeType, file.size) || this.isDocumentType(mimeType);
     }
     
     getPreviewInfo() {
@@ -388,7 +442,7 @@ class PreviewManager {
             const file = this.currentFiles[index];
             if (file.mimeType && file.mimeType.startsWith('image/')) {
                 const img = new Image();
-                img.src = Config.getDrivePreviewURL(file.id);
+                img.src = this.getPreviewURL(file.id);
             }
         };
         
