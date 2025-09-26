@@ -35,9 +35,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
+          registry-url: 'https://registry.npmjs.org'
 
-      - name: Install dependencies
-        run: npm install
+      - name: Clear npm cache and install
+        run: |
+          echo "🧹 Clearing npm cache..."
+          npm cache clean --force
+          echo "📦 Installing dependencies..."
+          npm install --no-cache --prefer-offline
+        timeout-minutes: 3
 
       - name: Debug Environment Variables
         run: |
