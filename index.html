@@ -1,11 +1,12 @@
+<!-- Updated index.html with ZIP library loading -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Team Portal - File Management</title>
+    <title>Team Portal - File Management with ZIP Support</title>
     
-    <!-- Stylesheets -->
+    <!-- Your existing stylesheets -->
     <link rel="stylesheet" href="assets/css/main.css">
     <link rel="stylesheet" href="assets/css/auth.css">
     <link rel="stylesheet" href="assets/css/portal.css">
@@ -13,53 +14,18 @@
     <!-- Preload critical resources -->
     <link rel="preload" href="data/auth.csv" as="fetch" crossorigin="anonymous">
     <link rel="preload" href="data/drive.json" as="fetch" crossorigin="anonymous">
+    
+    <!-- ZIP Library Preload (optional for faster loading) -->
+    <link rel="modulepreload" href="https://cdn.skypack.dev/client-zip">
+    <link rel="modulepreload" href="https://cdn.skypack.dev/jszip">
 </head>
 <body>
-    <!-- Loading Screen -->
-    <div id="loadingScreen" class="loading-screen">
-        <div class="loading-content">
-            <div class="loading-spinner"></div>
-            <h2>Loading Team Portal</h2>
-            <p id="loadingStatus">Initializing...</p>
-        </div>
-    </div>
-
-    <!-- Authentication Screen -->
-    <div id="authScreen" class="auth-screen hidden">
-        <div class="auth-container">
-            <div class="auth-header">
-                <h1>Team Portal Access</h1>
-                <p>Enter your username and password to access team files</p>
-            </div>
-            
-            <form id="authForm" class="auth-form">
-                <div class="form-group">
-                    <label for="usernameInput">Username:</label>
-                    <input type="text" id="usernameInput" required 
-                           placeholder="Enter your username (e.g., user1, user2...)"
-                           autocomplete="username">
-                </div>
-                
-                <div class="form-group">
-                    <label for="passwordInput">Password:</label>
-                    <input type="password" id="passwordInput" required 
-                           placeholder="Enter your password"
-                           autocomplete="current-password">
-                </div>
-                
-                <button type="submit" id="loginButton">
-                    <span>Access Portal</span>
-                    <div class="button-spinner hidden"></div>
-                </button>
-                
-                <div id="authError" class="auth-error hidden"></div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Main Portal -->
+    <!-- Your existing loading/auth/portal screens remain the same -->
+    <!-- ... [Keep all your existing HTML] ... -->
+    
+    <!-- Enhanced Portal Screen with ZIP Controls -->
     <div id="portalScreen" class="portal-screen hidden">
-        <!-- Header -->
+        <!-- Header (unchanged) -->
         <header class="portal-header">
             <div class="header-content">
                 <div class="header-left">
@@ -75,7 +41,7 @@
             </div>
         </header>
 
-        <!-- Navigation Breadcrumb -->
+        <!-- Navigation Breadcrumb (unchanged) -->
         <nav class="breadcrumb-nav">
             <div class="breadcrumb-container">
                 <div id="breadcrumb" class="breadcrumb">
@@ -98,9 +64,21 @@
 
         <!-- File Browser -->
         <main class="file-browser">
-            <!-- Folder Actions -->
+            <!-- Enhanced Folder Actions with ZIP Support -->
             <div id="folderActions" class="folder-actions">
                 <div class="actions-left">
+                    <!-- NEW: ZIP Download Controls -->
+                    <div class="download-options" style="display: none;" id="downloadOptions">
+                        <button id="downloadAsZip" class="btn btn-primary" title="Download selected files as ZIP">
+                            📦 Download ZIP
+                        </button>
+                        <button id="downloadIndividual" class="btn btn-secondary" title="Download files individually">
+                            📁 Download Individual
+                        </button>
+                        <span class="selected-info" id="selectedInfo">
+                            <span id="selectedCount">0</span> files selected
+                        </span>
+                    </div>
                 </div>
                 
                 <div class="actions-right">
@@ -115,12 +93,12 @@
                 </div>
             </div>
 
-            <!-- File Grid -->
+            <!-- File Grid (enhanced to show selection) -->
             <div id="fileGrid" class="file-grid">
                 <!-- Files will be dynamically loaded here -->
             </div>
 
-            <!-- Empty State -->
+            <!-- Empty State (unchanged) -->
             <div id="emptyState" class="empty-state hidden">
                 <div class="empty-icon">📁</div>
                 <h3>This folder is empty</h3>
@@ -129,60 +107,239 @@
         </main>
     </div>
 
-    <!-- Hidden iframe for downloads (kept for desktop compatibility) -->
-    <iframe id="downloadFrame" style="display: none;"></iframe>
-
-    <!-- Download Modal will be created dynamically by DownloadManager -->
-
-    <!-- JavaScript - IMPORTANT: Load in correct order -->
+    <!-- Enhanced Download Widget (will be created by DownloadManager) -->
+    
+    <!-- Your existing scripts -->
     <script src="assets/js/config.js"></script>
     <script src="assets/js/utils.js"></script>
     <script src="assets/js/auth.js"></script>
-    <script src="assets/js/fileManager.js"></script>
+    
+    <!-- Enhanced FileManager with selection support -->
+    <script>
+        // Enhanced FileManager to support file selection for ZIP
+        class EnhancedFileManager extends FileManager {
+            constructor() {
+                super();
+                this.selectedFiles = new Set();
+                this.bindZipEvents();
+            }
+            
+            bindZipEvents() {
+                // ZIP download button
+                document.getElementById('downloadAsZip')?.addEventListener('click', () => {
+                    this.downloadSelectedAsZip();
+                });
+                
+                // Individual download button  
+                document.getElementById('downloadIndividual')?.addEventListener('click', () => {
+                    this.downloadSelectedIndividually();
+                });
+            }
+            
+            // Override renderFiles to add selection checkboxes
+            renderFiles() {
+                if (!this.currentFolder) {
+                    this.showEmptyState();
+                    return;
+                }
+
+                const items = this.currentFolder.children || [];
+                
+                if (items.length === 0) {
+                    this.showEmptyState();
+                    return;
+                }
+
+                Utils.dom.hide(this.emptyState);
+                Utils.dom.show(this.folderActions);
+                
+                // Clear current files
+                this.fileGrid.innerHTML = '';
+                
+                // Sort items - folders first, then files
+                const sortedItems = [...items].sort((a, b) => {
+                    if (a.type === 'folder' && b.type !== 'folder') return -1;
+                    if (a.type !== 'folder' && b.type === 'folder') return 1;
+                    return a.name.localeCompare(b.name, undefined, { numeric: true });
+                });
+                
+                // Render items with selection support
+                sortedItems.forEach((item, index) => {
+                    const fileElement = this.createFileElementWithSelection(item, index);
+                    this.fileGrid.appendChild(fileElement);
+                    
+                    // Add download button to files
+                    if (window.App?.downloadManager && item.type === 'file') {
+                        window.App.downloadManager.addDownloadButtonToFile(fileElement, item);
+                    }
+                });
+                
+                // Apply view mode
+                this.applyViewMode();
+                this.updateSelectionUI();
+            }
+            
+            createFileElementWithSelection(item, index) {
+                const isFolder = item.type === 'folder';
+                const icon = isFolder ? Config.getFileIcon('folder') : Config.getFileIcon(item.mimeType, item.name);
+                const fileCount = isFolder && item.children ? item.children.length : null;
+                
+                const element = Utils.dom.create('div', {
+                    className: `file-item ${this.viewMode === 'list' ? 'list-view' : ''}`,
+                    'data-id': item.id,
+                    'data-type': item.type,
+                    'data-name': item.name
+                });
+                
+                // Add selection checkbox for files
+                const checkboxHtml = !isFolder ? `
+                    <div class="file-checkbox">
+                        <input type="checkbox" data-file-id="${item.id}" 
+                               onchange="window.App.fileManager.handleFileSelection(this, ${JSON.stringify(item).replace(/"/g, '&quot;')})">
+                    </div>
+                ` : '';
+                
+                element.innerHTML = `
+                    ${checkboxHtml}
+                    <div class="file-content ${this.viewMode === 'list' ? 'list-view' : ''}">
+                        <div class="file-icon ${this.viewMode === 'list' ? 'list-view' : ''}">${icon}</div>
+                        <div class="file-info">
+                            <div class="file-name" title="${Utils.sanitizeHTML(item.name)}">${Utils.sanitizeHTML(item.name)}</div>
+                            <div class="file-details ${this.viewMode === 'list' ? 'list-view' : ''}">
+                                ${isFolder ? 
+                                    (fileCount !== null ? `<span class="file-count">${fileCount} items</span>` : '') :
+                                    `
+                                        ${item.size ? `<span>${Config.formatFileSize(item.size)}</span>` : ''}
+                                        ${item.modifiedTime ? `<span>${Config.formatDate(item.modifiedTime)}</span>` : ''}
+                                    `
+                                }
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // Add click handlers
+                element.addEventListener('click', (e) => {
+                    // Don't navigate if clicking on checkbox
+                    if (e.target.type === 'checkbox') return;
+                    
+                    if (isFolder) {
+                        this.navigateToFolder(item);
+                    } else {
+                        this.openFilePreview(item);
+                    }
+                });
+                
+                return element;
+            }
+            
+            handleFileSelection(checkbox, file) {
+                if (checkbox.checked) {
+                    this.selectedFiles.add(file);
+                } else {
+                    this.selectedFiles.delete(file);
+                }
+                this.updateSelectionUI();
+            }
+            
+            updateSelectionUI() {
+                const count = this.selectedFiles.size;
+                const downloadOptions = document.getElementById('downloadOptions');
+                const selectedCount = document.getElementById('selectedCount');
+                
+                if (selectedCount) {
+                    selectedCount.textContent = count;
+                }
+                
+                if (downloadOptions) {
+                    downloadOptions.style.display = count > 0 ? 'flex' : 'none';
+                }
+            }
+            
+            downloadSelectedAsZip() {
+                const files = Array.from(this.selectedFiles);
+                if (files.length === 0) {
+                    Utils.showWarning('Please select files to download');
+                    return;
+                }
+                
+                const zipName = `${this.currentFolder.name || 'files'}_${new Date().toISOString().split('T')[0]}.zip`;
+                window.App.downloadManager.downloadFiles(files, { 
+                    forceZip: true, 
+                    zipName: zipName 
+                });
+            }
+            
+            downloadSelectedIndividually() {
+                const files = Array.from(this.selectedFiles);
+                if (files.length === 0) {
+                    Utils.showWarning('Please select files to download');
+                    return;
+                }
+                
+                window.App.downloadManager.downloadFiles(files, { forceIndividual: true });
+            }
+            
+            getSelectedFiles() {
+                return Array.from(this.selectedFiles);
+            }
+            
+            clearSelection() {
+                this.selectedFiles.clear();
+                // Uncheck all checkboxes
+                document.querySelectorAll('.file-checkbox input[type="checkbox"]').forEach(cb => {
+                    cb.checked = false;
+                });
+                this.updateSelectionUI();
+            }
+        }
+        
+        // Replace FileManager with EnhancedFileManager
+        window.FileManager = EnhancedFileManager;
+    </script>
+    
+    <!-- Your enhanced DownloadManager -->
     <script src="assets/js/downloadManager.js"></script>
     <script src="assets/js/previewManager.js"></script>
     
     <script>
-        // Initialize the application when page loads
+        // Initialize the application
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('🚀 Team Portal loading...');
+            console.log('🚀 Team Portal with ZIP support loading...');
             
-            // Verify Config is loaded
+            // Verify dependencies
             if (typeof Config === 'undefined') {
                 console.error('❌ Config is not loaded!');
-                document.body.innerHTML = '<div style="text-align: center; padding: 2rem;"><h2>Configuration Error</h2><p>Failed to load application configuration. Please refresh the page.</p></div>';
                 return;
             }
             
-            // Verify Utils is loaded
             if (typeof Utils === 'undefined') {
                 console.error('❌ Utils is not loaded!');
-                document.body.innerHTML = '<div style="text-align: center; padding: 2rem;"><h2>Utilities Error</h2><p>Failed to load application utilities. Please refresh the page.</p></div>';
                 return;
             }
             
             console.log('✅ Core modules loaded successfully');
             
-            // Initialize all managers
+            // Initialize managers with ZIP support
             try {
                 window.App = {
                     auth: new AuthManager(),
-                    fileManager: new FileManager(),
-                    downloadManager: new DownloadManager(), // ← Uses the individual download approach
+                    fileManager: new EnhancedFileManager(),
+                    downloadManager: new DownloadManager(), // Enhanced with ZIP
                     previewManager: new PreviewManager()
                 };
                 
                 // Start the application
                 window.App.auth.init();
                 
-                console.log('✅ Application initialized successfully');
+                console.log('✅ Application with ZIP support initialized successfully');
             } catch (error) {
                 console.error('❌ Failed to initialize application:', error);
                 Utils.showError('Failed to initialize application. Please refresh the page.');
             }
         });
 
-        // Global error handler
+        // Global error handlers
         window.addEventListener('error', function(event) {
             console.error('Global error:', event.error);
             if (typeof Utils !== 'undefined') {
