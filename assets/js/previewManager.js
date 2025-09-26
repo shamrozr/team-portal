@@ -1,208 +1,434 @@
-// assets/js/previewManager.js - File preview and modal management
+// assets/js/previewManager.js - Mobile-optimized preview manager
 
 class PreviewManager {
     constructor() {
         this.currentFile = null;
         this.currentFiles = [];
         this.currentIndex = 0;
+        this.setupModal();
+        this.setupKeyboardNavigation();
+    }
+    
+    setupModal() {
+        // Remove existing modal if it exists
+        const existingModal = document.getElementById('previewModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
         
-        // DOM elements
-        this.previewModal = Utils.dom.select('#previewModal');
-        this.previewTitle = Utils.dom.select('#previewTitle');
-        this.previewContent = Utils.dom.select('#previewContent');
-        this.closePreview = Utils.dom.select('#closePreview');
-        this.prevFile = Utils.dom.select('#prevFile');
-        this.nextFile = Utils.dom.select('#nextFile');
-        this.downloadCurrent = Utils.dom.select('#downloadCurrent');
+        const modal = document.createElement('div');
+        modal.id = 'previewModal';
+        modal.className = 'preview-modal hidden';
+        modal.innerHTML = `
+            <div class="preview-overlay"></div>
+            <div class="preview-container">
+                <div class="preview-header">
+                    <div class="preview-title" id="previewTitle">Loading...</div>
+                    <div class="preview-controls">
+                        <button class="preview-btn" id="downloadFromPreview">📥 Download</button>
+                        <button class="preview-btn close-btn" id="closePreview">×</button>
+                    </div>
+                </div>
+                <div class="preview-content" id="previewContent">
+                    <div class="preview-loading">
+                        <div class="spinner"></div>
+                        <span>Loading preview...</span>
+                    </div>
+                </div>
+                <div class="preview-navigation">
+                    <button class="nav-btn prev-btn" id="prevBtn" title="Previous file">‹</button>
+                    <div class="preview-counter">
+                        <span id="currentFileIndex">1</span> of <span id="totalFiles">1</span>
+                    </div>
+                    <button class="nav-btn next-btn" id="nextBtn" title="Next file">›</button>
+                </div>
+            </div>
+        `;
         
+        this.addStyles();
+        document.body.appendChild(modal);
         this.bindEvents();
     }
     
     bindEvents() {
+        const modal = document.getElementById('previewModal');
+        
         // Close button
-        if (this.closePreview) {
-            this.closePreview.addEventListener('click', () => {
-                this.hidePreview();
-            });
-        }
+        document.getElementById('closePreview').onclick = () => this.hidePreview();
         
         // Navigation buttons
-        if (this.prevFile) {
-            this.prevFile.addEventListener('click', () => {
-                this.showPreviousFile();
-            });
-        }
+        document.getElementById('prevBtn').onclick = () => this.showPreviousFile();
+        document.getElementById('nextBtn').onclick = () => this.showNextFile();
         
-        if (this.nextFile) {
-            this.nextFile.addEventListener('click', () => {
-                this.showNextFile();
-            });
-        }
+        // Download button
+        document.getElementById('downloadFromPreview').onclick = () => this.downloadCurrentFile();
         
-        // Download current file
-        if (this.downloadCurrent) {
-            this.downloadCurrent.addEventListener('click', () => {
-                this.downloadCurrentFile();
-            });
-        }
+        // Overlay click to close
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal || e.target.classList.contains('preview-overlay')) {
+                this.hidePreview();
+            }
+        });
+    }
+    
+    addStyles() {
+        if (document.getElementById('previewStyles')) return;
         
-        // Modal overlay click
-        if (this.previewModal) {
-            this.previewModal.addEventListener('click', (e) => {
-                if (e.target === this.previewModal || e.target.classList.contains('modal-overlay')) {
-                    this.hidePreview();
+        const style = document.createElement('style');
+        style.id = 'previewStyles';
+        style.textContent = `
+            .preview-modal {
+                position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                z-index: 10000; background: rgba(0,0,0,0.95);
+                animation: fadeIn 0.3s ease-in-out;
+            }
+            .preview-modal.hidden { display: none; }
+            
+            .preview-overlay {
+                position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            }
+            
+            .preview-container {
+                position: relative; width: 100%; height: 100%;
+                display: flex; flex-direction: column;
+            }
+            
+            .preview-header {
+                padding: 15px 20px; display: flex; justify-content: space-between;
+                align-items: center; background: rgba(0,0,0,0.9); color: white;
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+            }
+            
+            .preview-title { 
+                font-size: 16px; font-weight: 500; 
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                max-width: 60%;
+            }
+            
+            .preview-controls { 
+                display: flex; gap: 10px; align-items: center;
+            }
+            
+            .preview-btn {
+                padding: 8px 12px; background: rgba(255,255,255,0.15);
+                color: white; border: none; border-radius: 6px;
+                cursor: pointer; transition: background 0.2s;
+                font-size: 14px; font-weight: 500;
+            }
+            .preview-btn:hover { background: rgba(255,255,255,0.25); }
+            
+            .close-btn {
+                width: 36px; height: 36px; padding: 0;
+                font-size: 20px; font-weight: bold;
+                display: flex; align-items: center; justify-content: center;
+            }
+            
+            .preview-content {
+                flex: 1; display: flex; align-items: center;
+                justify-content: center; padding: 20px; overflow: hidden;
+                position: relative;
+            }
+            
+            .preview-image { 
+                max-width: 100%; max-height: 100%; object-fit: contain;
+                border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            }
+            
+            .preview-iframe { 
+                width: 100%; height: 100%; border: none; 
+                border-radius: 8px; background: white;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            }
+            
+            .preview-navigation {
+                padding: 15px 20px; display: flex; justify-content: space-between;
+                align-items: center; background: rgba(0,0,0,0.9); color: white;
+                border-top: 1px solid rgba(255,255,255,0.1);
+            }
+            
+            .nav-btn {
+                width: 44px; height: 44px; border-radius: 50%;
+                background: rgba(255,255,255,0.15); color: white;
+                border: none; font-size: 20px; cursor: pointer;
+                transition: all 0.2s; font-weight: bold;
+                display: flex; align-items: center; justify-content: center;
+            }
+            .nav-btn:hover:not(:disabled) { 
+                background: rgba(255,255,255,0.25); 
+                transform: scale(1.05);
+            }
+            .nav-btn:disabled { 
+                opacity: 0.3; cursor: not-allowed; 
+                background: rgba(255,255,255,0.05);
+            }
+            
+            .preview-counter { 
+                font-size: 15px; font-weight: 500;
+                background: rgba(255,255,255,0.1);
+                padding: 8px 16px; border-radius: 20px;
+            }
+            
+            .preview-loading {
+                display: flex; flex-direction: column; align-items: center;
+                gap: 20px; color: white; text-align: center;
+            }
+            
+            .preview-loading h3 {
+                margin: 0; font-size: 18px; color: white;
+            }
+            
+            .preview-loading p {
+                margin: 10px 0; color: rgba(255,255,255,0.8);
+            }
+            
+            .spinner {
+                width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.3);
+                border-top: 3px solid white; border-radius: 50%;
+                animation: spin 1s linear infinite;
+            }
+            
+            .preview-error {
+                display: flex; flex-direction: column; align-items: center;
+                gap: 20px; color: white; text-align: center; padding: 40px;
+            }
+            
+            .preview-error-icon {
+                font-size: 48px; opacity: 0.7;
+            }
+            
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+            
+            /* Mobile optimizations */
+            @media (max-width: 768px) {
+                .preview-header {
+                    padding: 12px 15px;
                 }
-            });
-        }
-        
-        // Keyboard navigation
+                
+                .preview-title {
+                    font-size: 14px; max-width: 50%;
+                }
+                
+                .preview-btn {
+                    padding: 6px 10px; font-size: 12px;
+                }
+                
+                .preview-content {
+                    padding: 15px;
+                }
+                
+                .preview-navigation {
+                    padding: 12px 15px;
+                }
+                
+                .nav-btn {
+                    width: 40px; height: 40px; font-size: 18px;
+                }
+                
+                .preview-counter {
+                    font-size: 13px; padding: 6px 12px;
+                }
+            }
+            
+            @media (max-width: 480px) {
+                .preview-header {
+                    flex-direction: column; gap: 10px; align-items: stretch;
+                }
+                
+                .preview-title {
+                    max-width: 100%; text-align: center;
+                }
+                
+                .preview-controls {
+                    justify-content: center;
+                }
+                
+                .preview-content {
+                    padding: 10px;
+                }
+                
+                .nav-btn {
+                    width: 36px; height: 36px; font-size: 16px;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    setupKeyboardNavigation() {
         document.addEventListener('keydown', (e) => {
             if (this.isPreviewVisible()) {
-                this.handleKeyboard(e);
+                switch(e.key) {
+                    case 'Escape':
+                        this.hidePreview();
+                        break;
+                    case 'ArrowLeft':
+                        this.showPreviousFile();
+                        break;
+                    case 'ArrowRight':
+                        this.showNextFile();
+                        break;
+                    case ' ':
+                    case 'Enter':
+                        this.downloadCurrentFile();
+                        break;
+                }
+                e.preventDefault();
             }
         });
     }
     
     showPreview(file, allFiles = []) {
         if (!file) {
-            Config.log('warn', 'No file provided for preview');
+            console.warn('No file provided for preview');
             return;
         }
         
-        Config.log('debug', `Showing preview for file: ${file.name}`);
-        
         this.currentFile = file;
-        this.currentFiles = allFiles.filter(f => f.type === 'file') || [file];
+        this.currentFiles = Array.isArray(allFiles) ? allFiles.filter(f => f.type === 'file') : [file];
         this.currentIndex = this.currentFiles.findIndex(f => f.id === file.id);
         
         if (this.currentIndex === -1) {
             this.currentIndex = 0;
         }
         
-        // Update modal title
-        if (this.previewTitle) {
-            this.previewTitle.textContent = file.name;
-        }
-        
-        // Load preview content
-        this.loadPreviewContent(file);
-        
-        // Update navigation
-        this.updateNavigation();
-        
-        // Show modal
         this.showPreviewModal();
+        this.loadCurrentPreview();
     }
     
-    loadPreviewContent(file) {
-        if (!this.previewContent) return;
+    showPreviewModal() {
+        const modal = document.getElementById('previewModal');
+        if (modal) {
+            modal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        }
+    }
+    
+    hidePreview() {
+        const modal = document.getElementById('previewModal');
+        if (modal) {
+            modal.classList.add('hidden');
+            document.body.style.overflow = '';
+        }
         
-        // Clear previous content
-        this.previewContent.innerHTML = '<div class="preview-loading">Loading preview...</div>';
+        this.currentFile = null;
+        this.currentFiles = [];
+        this.currentIndex = 0;
+    }
+    
+    isPreviewVisible() {
+        const modal = document.getElementById('previewModal');
+        return modal && !modal.classList.contains('hidden');
+    }
+    
+    async loadCurrentPreview() {
+        const currentFile = this.currentFiles[this.currentIndex];
+        if (!currentFile) return;
+        
+        this.currentFile = currentFile;
+        
+        // Update UI elements
+        this.updatePreviewUI();
+        
+        const content = document.getElementById('previewContent');
+        if (!content) return;
+        
+        // Show loading state
+        content.innerHTML = `
+            <div class="preview-loading">
+                <div class="spinner"></div>
+                <span>Loading preview...</span>
+            </div>
+        `;
         
         try {
-            const mimeType = file.mimeType || Utils.getMimeType(file.name);
-            
-            if (mimeType.startsWith('image/')) {
-                this.loadImagePreview(file);
-            } else if (mimeType === 'application/pdf') {
-                this.loadPDFPreview(file);
-            } else if (mimeType.startsWith('video/')) {
-                this.loadVideoPreview(file);
-            } else if (mimeType.startsWith('text/') || this.isDocumentType(mimeType)) {
-                this.loadDocumentPreview(file);
-            } else {
-                this.showPreviewUnavailable(file);
-            }
-            
+            await this.loadPreviewContent(currentFile, content);
         } catch (error) {
-            Config.log('error', 'Failed to load preview:', error);
-            this.showPreviewError(file, error);
+            console.error('Preview failed:', error);
+            this.showPreviewError(currentFile, content);
         }
     }
     
-    loadImagePreview(file) {
-        const img = Utils.dom.create('img', {
-            src: this.getPreviewURL(file.id),
-            alt: file.name,
-            style: 'max-width: 100%; max-height: 500px; object-fit: contain; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);'
-        });
+    updatePreviewUI() {
+        const title = document.getElementById('previewTitle');
+        const currentIndex = document.getElementById('currentFileIndex');
+        const totalFiles = document.getElementById('totalFiles');
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
         
-        img.addEventListener('load', () => {
-            this.previewContent.innerHTML = '';
-            this.previewContent.appendChild(img);
-        });
+        if (title) title.textContent = this.currentFile.name;
+        if (currentIndex) currentIndex.textContent = this.currentIndex + 1;
+        if (totalFiles) totalFiles.textContent = this.currentFiles.length;
         
-        img.addEventListener('error', () => {
-            this.showPreviewError(file, new Error('Failed to load image'));
+        if (prevBtn) prevBtn.disabled = this.currentIndex === 0;
+        if (nextBtn) nextBtn.disabled = this.currentIndex === this.currentFiles.length - 1;
+    }
+    
+    async loadPreviewContent(file, container) {
+        const extension = file.name.split('.').pop().toLowerCase();
+        const mimeType = file.mimeType || '';
+        
+        if (mimeType.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(extension)) {
+            await this.loadImagePreview(file, container);
+        } else if (mimeType.startsWith('video/') || ['mp4', 'webm', 'mov'].includes(extension)) {
+            this.loadVideoPreview(file, container);
+        } else if (mimeType === 'application/pdf' || extension === 'pdf') {
+            this.loadPDFPreview(file, container);
+        } else if (this.isDocumentType(mimeType) || ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt'].includes(extension)) {
+            this.loadDocumentPreview(file, container);
+        } else {
+            throw new Error('Unsupported file type for preview');
+        }
+    }
+    
+    async loadImagePreview(file, container) {
+        const imageUrl = `https://drive.google.com/uc?id=${file.id}`;
+        
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                container.innerHTML = `<img src="${imageUrl}" class="preview-image" alt="${file.name}">`;
+                resolve();
+            };
+            img.onerror = () => {
+                // Fallback to iframe if direct image fails
+                container.innerHTML = `<iframe src="https://drive.google.com/file/d/${file.id}/preview" class="preview-iframe"></iframe>`;
+                resolve();
+            };
+            img.src = imageUrl;
         });
     }
     
-    loadPDFPreview(file) {
-        const embedUrl = this.getEmbedURL(file.id);
-        
-        const iframe = Utils.dom.create('iframe', {
-            src: embedUrl,
-            style: 'width: 100%; height: 600px; border: none; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);',
-            sandbox: 'allow-scripts allow-same-origin allow-popups'
-        });
-        
-        iframe.addEventListener('load', () => {
-            // PDF loaded successfully
-            Config.log('debug', 'PDF preview loaded successfully');
-        });
-        
-        iframe.addEventListener('error', () => {
-            this.showPreviewError(file, new Error('Failed to load PDF'));
-        });
-        
-        this.previewContent.innerHTML = '';
-        this.previewContent.appendChild(iframe);
+    loadVideoPreview(file, container) {
+        container.innerHTML = `<iframe src="https://drive.google.com/file/d/${file.id}/preview" class="preview-iframe" allow="autoplay; encrypted-media"></iframe>`;
     }
     
-    loadVideoPreview(file) {
-        // For videos, we'll also use iframe for better compatibility
-        const embedUrl = this.getEmbedURL(file.id);
-        
-        const iframe = Utils.dom.create('iframe', {
-            src: embedUrl,
-            style: 'width: 100%; height: 500px; border: none; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);',
-            sandbox: 'allow-scripts allow-same-origin allow-popups',
-            allow: 'autoplay; encrypted-media'
-        });
-        
-        iframe.addEventListener('load', () => {
-            Config.log('debug', 'Video preview loaded successfully');
-        });
-        
-        iframe.addEventListener('error', () => {
-            this.showPreviewError(file, new Error('Failed to load video'));
-        });
-        
-        this.previewContent.innerHTML = '';
-        this.previewContent.appendChild(iframe);
+    loadPDFPreview(file, container) {
+        container.innerHTML = `<iframe src="https://drive.google.com/file/d/${file.id}/preview" class="preview-iframe"></iframe>`;
     }
     
-    loadDocumentPreview(file) {
-        // For documents (Word, Excel, PowerPoint), use Google Drive viewer
-        const embedUrl = this.getEmbedURL(file.id);
-        
-        const iframe = Utils.dom.create('iframe', {
-            src: embedUrl,
-            style: 'width: 100%; height: 600px; border: none; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);',
-            sandbox: 'allow-scripts allow-same-origin allow-popups'
-        });
-        
-        iframe.addEventListener('load', () => {
-            Config.log('debug', 'Document preview loaded successfully');
-        });
-        
-        iframe.addEventListener('error', () => {
-            this.showPreviewUnavailable(file, 'Document preview not available. Click download to view the file.');
-        });
-        
-        this.previewContent.innerHTML = '';
-        this.previewContent.appendChild(iframe);
+    loadDocumentPreview(file, container) {
+        container.innerHTML = `<iframe src="https://docs.google.com/viewer?url=https://drive.google.com/uc?id=${file.id}&embedded=true" class="preview-iframe"></iframe>`;
+    }
+    
+    showPreviewError(file, container) {
+        container.innerHTML = `
+            <div class="preview-error">
+                <div class="preview-error-icon">📄</div>
+                <h3>Preview not available</h3>
+                <p>Unable to load preview for ${file.name}</p>
+                <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                    <button class="preview-btn" onclick="window.App.previewManager.downloadCurrentFile()">
+                        📥 Download File
+                    </button>
+                    <button class="preview-btn" onclick="window.open('https://drive.google.com/file/d/${file.id}/view', '_blank')">
+                        🔗 Open in Drive
+                    </button>
+                </div>
+            </div>
+        `;
     }
     
     isDocumentType(mimeType) {
@@ -214,136 +440,22 @@ class PreviewManager {
             'application/vnd.ms-powerpoint',
             'application/vnd.openxmlformats-officedocument.presentationml.presentation',
             'text/plain',
-            'text/html',
-            'text/css',
-            'text/javascript',
-            'application/json'
+            'text/html'
         ];
-        
         return documentTypes.includes(mimeType);
-    }
-    
-    getPreviewURL(fileId) {
-        // Use direct view URL instead of export for better compatibility
-        return `https://drive.google.com/uc?export=view&id=${fileId}`;
-    }
-    
-    getEmbedURL(fileId) {
-        // Use the embed URL format that works better in iframes
-        return `https://drive.google.com/file/d/${fileId}/preview?usp=sharing`;
-    }
-    
-    showPreviewUnavailable(file, customMessage = null) {
-        const message = customMessage || 
-            `Preview not available for ${Utils.getFileExtension(file.name).toUpperCase()} files.`;
-        
-        const content = Utils.dom.create('div', {
-            className: 'preview-unavailable',
-            innerHTML: `
-                <div style="text-align: center; padding: 3rem; color: #6B7280;">
-                    <div style="font-size: 4rem; margin-bottom: 1.5rem; opacity: 0.5;">
-                        ${Config.getFileIcon(file.mimeType, file.name)}
-                    </div>
-                    <h3 style="margin-bottom: 1rem; color: #374151; font-size: 1.25rem;">${Utils.sanitizeHTML(file.name)}</h3>
-                    <p style="margin-bottom: 2rem; line-height: 1.6; max-width: 400px; margin-left: auto; margin-right: auto;">${message}</p>
-                    <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
-                        <button class="btn btn-primary" onclick="window.App.previewManager.downloadCurrentFile()">
-                            📥 Download File
-                        </button>
-                        <button class="btn btn-outline" onclick="window.App.previewManager.openInNewTab()">
-                            🔗 Open in Drive
-                        </button>
-                    </div>
-                    ${file.size ? `<p style="margin-top: 1rem; font-size: 0.875rem; color: #9CA3AF;">File size: ${Config.formatFileSize(file.size)}</p>` : ''}
-                </div>
-            `
-        });
-        
-        this.previewContent.innerHTML = '';
-        this.previewContent.appendChild(content);
-    }
-    
-    showPreviewError(file, error) {
-        Config.log('error', 'Preview error:', error);
-        
-        const content = Utils.dom.create('div', {
-            className: 'preview-error',
-            innerHTML: `
-                <div style="text-align: center; padding: 3rem; color: #EF4444;">
-                    <div style="font-size: 4rem; margin-bottom: 1.5rem;">❌</div>
-                    <h3 style="margin-bottom: 1rem; color: #374151; font-size: 1.25rem;">Preview Error</h3>
-                    <p style="margin-bottom: 2rem; color: #6B7280; line-height: 1.6;">
-                        Failed to load preview for <strong>${Utils.sanitizeHTML(file.name)}</strong>
-                    </p>
-                    <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
-                        <button class="btn btn-outline" onclick="window.App.previewManager.loadPreviewContent(window.App.previewManager.currentFile)">
-                            🔄 Retry Preview
-                        </button>
-                        <button class="btn btn-primary" onclick="window.App.previewManager.downloadCurrentFile()">
-                            📥 Download Instead
-                        </button>
-                        <button class="btn btn-outline" onclick="window.App.previewManager.openInNewTab()">
-                            🔗 Open in Drive
-                        </button>
-                    </div>
-                </div>
-            `
-        });
-        
-        this.previewContent.innerHTML = '';
-        this.previewContent.appendChild(content);
-    }
-    
-    openInNewTab() {
-        if (this.currentFile) {
-            const driveUrl = `https://drive.google.com/file/d/${this.currentFile.id}/view`;
-            window.open(driveUrl, '_blank', 'noopener,noreferrer');
-        }
-    }
-    
-    updateNavigation() {
-        const hasMultipleFiles = this.currentFiles.length > 1;
-        const isFirst = this.currentIndex === 0;
-        const isLast = this.currentIndex === this.currentFiles.length - 1;
-        
-        // Update navigation buttons
-        if (this.prevFile) {
-            this.prevFile.disabled = !hasMultipleFiles || isFirst;
-            this.prevFile.style.display = hasMultipleFiles ? 'flex' : 'none';
-        }
-        
-        if (this.nextFile) {
-            this.nextFile.disabled = !hasMultipleFiles || isLast;
-            this.nextFile.style.display = hasMultipleFiles ? 'flex' : 'none';
-        }
-        
-        // Update button text with file info
-        if (hasMultipleFiles) {
-            if (this.prevFile && !isFirst) {
-                const prevFile = this.currentFiles[this.currentIndex - 1];
-                this.prevFile.title = `Previous: ${prevFile.name}`;
-            }
-            
-            if (this.nextFile && !isLast) {
-                const nextFile = this.currentFiles[this.currentIndex + 1];
-                this.nextFile.title = `Next: ${nextFile.name}`;
-            }
-        }
     }
     
     showPreviousFile() {
         if (this.currentIndex > 0) {
             this.currentIndex--;
-            const file = this.currentFiles[this.currentIndex];
-            this.showPreview(file, this.currentFiles);
+            this.loadCurrentPreview();
         }
     }
     
     showNextFile() {
         if (this.currentIndex < this.currentFiles.length - 1) {
             this.currentIndex++;
-            const file = this.currentFiles[this.currentIndex];
-            this.showPreview(file, this.currentFiles);
+            this.loadCurrentPreview();
         }
     }
     
@@ -351,106 +463,6 @@ class PreviewManager {
         if (this.currentFile && window.App?.downloadManager) {
             window.App.downloadManager.downloadFiles([this.currentFile]);
         }
-    }
-    
-    showPreviewModal() {
-        Utils.dom.show(this.previewModal);
-        document.body.style.overflow = 'hidden'; // Prevent background scrolling
-        
-        // Focus the modal for keyboard navigation
-        this.previewModal.focus();
-    }
-    
-    hidePreview() {
-        Utils.dom.hide(this.previewModal);
-        document.body.style.overflow = ''; // Restore scrolling
-        
-        // Clear current preview data
-        this.currentFile = null;
-        this.currentFiles = [];
-        this.currentIndex = 0;
-        
-        // Clear preview content
-        if (this.previewContent) {
-            this.previewContent.innerHTML = '';
-        }
-    }
-    
-    isPreviewVisible() {
-        return this.previewModal && !this.previewModal.classList.contains('hidden');
-    }
-    
-    handleKeyboard(e) {
-        switch (e.key) {
-            case Config.KEYBOARD_SHORTCUTS.ESCAPE:
-                e.preventDefault();
-                this.hidePreview();
-                break;
-                
-            case Config.KEYBOARD_SHORTCUTS.ARROW_LEFT:
-                e.preventDefault();
-                this.showPreviousFile();
-                break;
-                
-            case Config.KEYBOARD_SHORTCUTS.ARROW_RIGHT:
-                e.preventDefault();
-                this.showNextFile();
-                break;
-                
-            case Config.KEYBOARD_SHORTCUTS.SPACE:
-            case Config.KEYBOARD_SHORTCUTS.ENTER:
-                e.preventDefault();
-                this.downloadCurrentFile();
-                break;
-        }
-    }
-    
-    // Public API methods
-    getCurrentFile() {
-        return this.currentFile;
-    }
-    
-    getCurrentIndex() {
-        return this.currentIndex;
-    }
-    
-    getTotalFiles() {
-        return this.currentFiles.length;
-    }
-    
-    isFilePreviewable(file) {
-        if (!file) return false;
-        
-        const mimeType = file.mimeType || Utils.getMimeType(file.name);
-        return Config.isPreviewable(mimeType, file.size) || this.isDocumentType(mimeType);
-    }
-    
-    getPreviewInfo() {
-        return {
-            currentFile: this.currentFile,
-            currentIndex: this.currentIndex,
-            totalFiles: this.currentFiles.length,
-            isVisible: this.isPreviewVisible()
-        };
-    }
-    
-    // Utility method to preload next/previous images for smoother navigation
-    preloadAdjacentImages() {
-        if (!this.currentFiles || this.currentFiles.length <= 1) return;
-        
-        const preloadImage = (index) => {
-            if (index < 0 || index >= this.currentFiles.length) return;
-            
-            const file = this.currentFiles[index];
-            if (file.mimeType && file.mimeType.startsWith('image/')) {
-                const img = new Image();
-                img.src = this.getPreviewURL(file.id);
-            }
-        };
-        
-        // Preload previous and next images
-        preloadImage(this.currentIndex - 1);
-        preloadImage(this.currentIndex + 1);
     }
 }
 
