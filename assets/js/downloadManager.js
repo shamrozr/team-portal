@@ -22,13 +22,31 @@ class DownloadManager {
             return;
         }
         
+        // Try multiple CDN sources
+        const cdnUrls = [
+            'https://unpkg.com/fflate@0.8.2/lib/index.js',
+            'https://cdn.jsdelivr.net/npm/fflate@0.8.2/lib/index.js',
+            'https://cdnjs.cloudflare.com/ajax/libs/fflate/0.8.2/index.min.js'
+        ];
+        
+        this.tryLoadFromCDN(cdnUrls, 0);
+    }
+    
+    tryLoadFromCDN(urls, index) {
+        if (index >= urls.length) {
+            console.error('All CDN sources failed, falling back to basic download');
+            this.zipLibraryFailed = true;
+            return;
+        }
+        
         const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/fflate/0.8.2/index.min.js';
+        script.src = urls[index];
         script.onload = () => {
-            console.log('fflate library loaded successfully');
+            console.log(`fflate library loaded successfully from: ${urls[index]}`);
         };
         script.onerror = () => {
-            console.error('Failed to load fflate library');
+            console.warn(`Failed to load from ${urls[index]}, trying next CDN...`);
+            this.tryLoadFromCDN(urls, index + 1);
         };
         document.head.appendChild(script);
     }
@@ -195,16 +213,17 @@ class DownloadManager {
         }
     }
     
-    // Multi-file download using ZIP method
+    // Multi-file download using ZIP method (with fallback)
     async downloadFiles(files) {
         if (!files || files.length === 0) {
             this.showToast('No files to download', 'warning');
             return;
         }
         
-        // Check if fflate is loaded
-        if (!window.fflate) {
-            this.showToast('ZIP library not loaded. Please try again.', 'error');
+        // If ZIP library failed to load, fall back to individual downloads
+        if (!window.fflate || this.zipLibraryFailed) {
+            console.log('ZIP library not available, falling back to individual downloads');
+            this.fallbackDownload(files);
             return;
         }
         
@@ -224,9 +243,26 @@ class DownloadManager {
             
         } catch (error) {
             console.error('ZIP download failed:', error);
-            this.showToast('Download failed. Please try again.', 'error');
-        } finally {
+            this.showToast('ZIP download failed. Trying individual downloads...', 'warning');
             this.hideProgressOverlay();
+            // Fallback to individual downloads
+            this.fallbackDownload(files);
+        }
+    }
+    
+    // Fallback: Download files individually with delays
+    fallbackDownload(files) {
+        this.showToast(`Starting ${files.length} individual downloads...`, 'info');
+        
+        files.forEach((file, index) => {
+            setTimeout(() => {
+                this.downloadSingleFile(file.id, file.name);
+            }, index * 1000); // 1 second delays
+        });
+        
+        // Clear selection after starting downloads
+        if (window.App?.fileManager) {
+            window.App.fileManager.clearSelection();
         }
     }
     
