@@ -141,67 +141,6 @@
         </main>
     </div>
 
-    <!-- File Preview Modal -->
-    <div id="previewModal" class="modal hidden">
-        <div class="modal-overlay"></div>
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="previewTitle">File Preview</h3>
-                <button id="closePreview" class="modal-close">×</button>
-            </div>
-            
-            <div class="modal-body">
-                <div id="previewContent" class="preview-content">
-                    <!-- Preview content will be loaded here -->
-                </div>
-                
-                <div class="preview-nav">
-                    <button id="prevFile" class="preview-nav-btn">
-                        ← Previous
-                    </button>
-                    <button id="nextFile" class="preview-nav-btn">
-                        Next →
-                    </button>
-                </div>
-            </div>
-            
-            <div class="modal-footer">
-                <button id="downloadCurrent" class="btn btn-primary">
-                    Download File
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Download Progress Modal -->
-    <div id="downloadModal" class="modal hidden">
-        <div class="modal-overlay"></div>
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Download Progress</h3>
-            </div>
-            
-            <div class="modal-body">
-                <div id="downloadQueue" class="download-queue">
-                    <!-- Download items will be added here -->
-                </div>
-                
-                <div class="download-summary">
-                    <div class="download-stats">
-                        <span id="downloadProgress">0 of 0 files</span>
-                        <span id="downloadStatus">Preparing...</span>
-                    </div>
-                    
-                    <div class="download-actions">
-                        <button id="cancelDownloads" class="btn btn-secondary">
-                            Cancel All
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Hidden iframe for downloads -->
     <iframe id="downloadFrame" style="display: none;"></iframe>
 
