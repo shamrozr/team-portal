@@ -6,7 +6,7 @@ window.Config = {
     DRIVE_DATA_PATH: 'data/drive.json',
     
     // External data URLs (set these to use external Excel/CSV files)
-    AUTH_DATA_URL: null, // Set to Excel download URL, e.g., 'https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/export?format=csv&gid=0'
+    AUTH_DATA_URL: 'https://docs.google.com/spreadsheets/d/1lPEpNadiqbL9Q2hDf1Oo09SlQR1sKUbDjyJsI4SEhQM/export?format=csv&gid=0',
     
     // Google Drive URLs
     DRIVE_DOWNLOAD_BASE: 'https://drive.google.com/uc?export=download&id=',
