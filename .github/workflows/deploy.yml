@@ -9,6 +9,11 @@ on:
         required: true
         default: 'true'
         type: boolean
+      download_auth:
+        description: 'Download latest authentication data'
+        required: true
+        default: 'true'
+        type: boolean
       environment:
         description: 'Deployment environment'
         required: true
@@ -34,6 +39,20 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Download Authentication Data
+        if: github.event.inputs.download_auth == 'true'
+        run: |
+          echo "🔐 Starting authentication data download..."
+          npm run download-auth
+        env:
+          AUTH_CSV_URL: ${{ vars.AUTH_CSV_URL }}
+
+      - name: Skip authentication download
+        if: github.event.inputs.download_auth == 'false'
+        run: |
+          echo "⏭️ Skipping authentication data download as requested"
+          echo "⚠️ Warning: Make sure auth.csv exists or this will fail"
+
       - name: Build Google Drive Database
         if: github.event.inputs.rebuild_database == 'true'
         run: npm run build
@@ -48,27 +67,37 @@ jobs:
           echo "⏭️ Skipping database rebuild as requested"
           echo "Using existing drive.json file"
 
-      - name: Verify database exists
+      - name: Verify required files exist
         run: |
+          echo "📋 Checking generated files..."
+          
+          # Check drive database
           if [ -f "./data/drive.json" ]; then
             echo "✅ Database file found"
             echo "File size: $(stat -f%z ./data/drive.json 2>/dev/null || stat -c%s ./data/drive.json) bytes"
-            echo "First 200 characters of the database:"
-            head -c 200 ./data/drive.json
-            echo ""
-            echo "Database structure preview:"
+            echo "Database preview:"
             jq -r '.name // "Unknown"' ./data/drive.json 2>/dev/null || echo "Could not parse JSON"
             echo "Total children: $(jq '.children | length' ./data/drive.json 2>/dev/null || echo 'Unknown')"
           else
-            echo "❌ Database file not found!"
-            echo "💡 Enable 'Rebuild Google Drive database' option or ensure drive.json exists"
+            echo "❌ drive.json not found!"
+            exit 1
+          fi
+          
+          # Check auth data
+          if [ -f "./data/auth.csv" ]; then
+            echo "✅ Authentication file found"
+            echo "File size: $(stat -f%z ./data/auth.csv 2>/dev/null || stat -c%s ./data/auth.csv) bytes"
+            echo "User count: $(($(wc -l < ./data/auth.csv) - 1))"
+            echo "Headers: $(head -1 ./data/auth.csv)"
+          else
+            echo "❌ auth.csv not found!"
             exit 1
           fi
 
-      - name: Validate required files
+      - name: Validate core application files
         run: |
-          echo "📋 Checking required files..."
-          required_files=("index.html" "data/drive.json" "data/auth.csv" "assets/js/config.js" "assets/js/utils.js" "assets/js/auth.js")
+          echo "📋 Checking core application files..."
+          required_files=("index.html" "assets/js/config.js" "assets/js/utils.js" "assets/js/auth.js" "assets/js/fileManager.js" "assets/js/downloadManager.js" "assets/js/previewManager.js")
           
           for file in "${required_files[@]}"; do
             if [ -f "$file" ]; then
@@ -92,12 +121,15 @@ jobs:
       - name: Deployment Summary
         run: |
           echo "🚀 Deployment completed successfully!"
-          echo "Environment: ${{ github.event.inputs.environment }}"
-          echo "Database rebuilt: ${{ github.event.inputs.rebuild_database }}"
-          echo "Deployment URL: https://team-portal-dcm.pages.dev"
+          echo ""
+          echo "📊 Build Summary:"
+          echo "- Environment: ${{ github.event.inputs.environment }}"
+          echo "- Database rebuilt: ${{ github.event.inputs.rebuild_database }}"
+          echo "- Auth data downloaded: ${{ github.event.inputs.download_auth }}"
+          echo "- Deployment URL: https://team-portal-dcm.pages.dev"
           echo ""
           echo "📋 What was deployed:"
-          echo "- Portal application with all fixes"
-          echo "- Updated authentication system"
+          echo "- Portal application with latest fixes"
+          echo "- Dynamic authentication system"
           echo "- Fixed download and preview managers"
-          echo "- External CSV support for user management"
+          echo "- Real-time data from external sources"
