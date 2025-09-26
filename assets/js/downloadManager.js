@@ -6,6 +6,7 @@ class DownloadManager {
         this.downloadQueue = [];
         this.isProcessing = false;
         this.addFileDownloadButtonStyles();
+        this.createDownloadFrame(); // Add iframe for same-tab downloads
     }
     
     detectMobile() {
@@ -122,8 +123,21 @@ class DownloadManager {
         }
     }
     
-    // Queue download with 1-second delay
+    // Queue download with 1-second delay and prevent multiple clicks
     queueDownload(fileId, fileName, buttonElement) {
+        // Check if already processing and queue is not empty
+        if (this.isProcessing && this.downloadQueue.length > 0) {
+            this.showToast('Please wait - previous download still in progress', 'warning');
+            return;
+        }
+        
+        // Check if this file is already in queue
+        const alreadyQueued = this.downloadQueue.some(item => item.fileId === fileId);
+        if (alreadyQueued) {
+            this.showToast('This file is already queued for download', 'info');
+            return;
+        }
+        
         // Add to queue
         this.downloadQueue.push({
             fileId,
@@ -136,6 +150,11 @@ class DownloadManager {
             buttonElement.classList.add('downloading');
             buttonElement.innerHTML = '⏳';
             buttonElement.disabled = true;
+        }
+        
+        // Show queue status
+        if (this.downloadQueue.length > 1) {
+            this.showToast(`Added to queue. Position: ${this.downloadQueue.length}`, 'info');
         }
         
         // Process queue if not already processing
@@ -184,20 +203,24 @@ class DownloadManager {
         this.isProcessing = false;
     }
     
-    // Download single file
+    // Create hidden iframe for same-tab downloads
+    createDownloadFrame() {
+        if (!this.downloadFrame) {
+            this.downloadFrame = document.createElement('iframe');
+            this.downloadFrame.id = 'downloadFrame';
+            this.downloadFrame.style.cssText = 'display: none; width: 0; height: 0; border: none;';
+            document.body.appendChild(this.downloadFrame);
+        }
+    }
+    
+    // Download single file using iframe (same tab)
     downloadSingleFile(fileId, fileName) {
         console.log(`Starting download: ${fileName}`);
         
         const downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
         
-        const anchor = document.createElement('a');
-        anchor.href = downloadUrl;
-        anchor.download = fileName || '';
-        anchor.style.display = 'none';
-        
-        document.body.appendChild(anchor);
-        anchor.click();
-        document.body.removeChild(anchor);
+        // Use iframe to download in same tab
+        this.downloadFrame.src = downloadUrl;
         
         this.showToast(`Download started: ${fileName}`, 'success');
     }
