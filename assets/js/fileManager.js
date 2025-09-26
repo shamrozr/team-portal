@@ -33,28 +33,33 @@ class FileManager {
     }
     
     async init() {
-        if (!window.App?.auth?.isUserAuthenticated()) {
-            Config.log('warn', 'User not authenticated, cannot initialize file manager');
-            return;
+    if (!window.App?.auth?.isUserAuthenticated()) {
+        Config.log('warn', 'User not authenticated, cannot initialize file manager');
+        return;
+    }
+    
+    try {
+        Config.log('info', 'Initializing file manager...');
+        
+        // Load drive data
+        await this.loadDriveData();
+        
+        // Initialize download manager integration
+        if (window.App?.downloadManager) {
+            window.App.downloadManager.init();
         }
         
-        try {
-            Config.log('info', 'Initializing file manager...');
-            
-            // Load drive data
-            await this.loadDriveData();
-            
-            // Navigate to saved or root path
-            const savedPath = Utils.storage.get(Config.STORAGE_KEYS.LAST_PATH) || '/';
-            await this.navigateToPath(savedPath);
-            
-            Config.log('info', 'File manager initialized successfully');
-            
-        } catch (error) {
-            Config.log('error', 'Failed to initialize file manager:', error);
-            Utils.showError('Failed to load file system. Please refresh the page.');
-        }
+        // Navigate to saved or root path
+        const savedPath = Utils.storage.get(Config.STORAGE_KEYS.LAST_PATH) || '/';
+        await this.navigateToPath(savedPath);
+        
+        Config.log('info', 'File manager initialized successfully');
+        
+    } catch (error) {
+        Config.log('error', 'Failed to initialize file manager:', error);
+        Utils.showError('Failed to load file system. Please refresh the page.');
     }
+}
     
     async loadDriveData() {
         try {
@@ -193,40 +198,45 @@ class FileManager {
     }
     
     renderFiles() {
-        if (!this.currentFolder) {
-            this.showEmptyState();
-            return;
-        }
-        
-        const items = this.currentFolder.children || [];
-        
-        if (items.length === 0) {
-            this.showEmptyState();
-            return;
-        }
-        
-        Utils.dom.hide(this.emptyState);
-        Utils.dom.show(this.folderActions);
-        
-        // Clear current files
-        this.fileGrid.innerHTML = '';
-        
-        // Sort items - folders first, then files
-        const sortedItems = [...items].sort((a, b) => {
-            if (a.type === 'folder' && b.type !== 'folder') return -1;
-            if (a.type !== 'folder' && b.type === 'folder') return 1;
-            return a.name.localeCompare(b.name, undefined, { numeric: true });
-        });
-        
-        // Render items
-        sortedItems.forEach((item, index) => {
-            const fileElement = this.createFileElement(item, index);
-            this.fileGrid.appendChild(fileElement);
-        });
-        
-        // Apply view mode
-        this.applyViewMode();
+    if (!this.currentFolder) {
+        this.showEmptyState();
+        return;
     }
+
+    const items = this.currentFolder.children || [];
+    
+    if (items.length === 0) {
+        this.showEmptyState();
+        return;
+    }
+
+    Utils.dom.hide(this.emptyState);
+    Utils.dom.show(this.folderActions);
+    
+    // Clear current files
+    this.fileGrid.innerHTML = '';
+    
+    // Sort items - folders first, then files
+    const sortedItems = [...items].sort((a, b) => {
+        if (a.type === 'folder' && b.type !== 'folder') return -1;
+        if (a.type !== 'folder' && b.type === 'folder') return 1;
+        return a.name.localeCompare(b.name, undefined, { numeric: true });
+    });
+    
+    // Render items
+    sortedItems.forEach((item, index) => {
+        const fileElement = this.createFileElement(item, index);
+        this.fileGrid.appendChild(fileElement);
+        
+        // ADD THIS: Add download button to files (not folders)
+        if (window.App?.downloadManager && item.type === 'file') {
+            window.App.downloadManager.addDownloadButtonToFile(fileElement, item);
+        }
+    });
+    
+    // Apply view mode
+    this.applyViewMode();
+}
     
     createFileElement(item, index) {
         const isFolder = item.type === 'folder';
