@@ -24,38 +24,38 @@
         </div>
     </div>
 
-    <!-- Authentication Screen (Replace in index.html) -->
-<div id="authScreen" class="auth-screen hidden">
-    <div class="auth-container">
-        <div class="auth-header">
-            <h1>Team Portal Access</h1>
-            <p>Enter your username and password to access team files</p>
+    <!-- Authentication Screen -->
+    <div id="authScreen" class="auth-screen hidden">
+        <div class="auth-container">
+            <div class="auth-header">
+                <h1>Team Portal Access</h1>
+                <p>Enter your username and password to access team files</p>
+            </div>
+            
+            <form id="authForm" class="auth-form">
+                <div class="form-group">
+                    <label for="usernameInput">Username:</label>
+                    <input type="text" id="usernameInput" required 
+                           placeholder="Enter your username (e.g., user1, user2...)"
+                           autocomplete="username">
+                </div>
+                
+                <div class="form-group">
+                    <label for="passwordInput">Password:</label>
+                    <input type="password" id="passwordInput" required 
+                           placeholder="Enter your password"
+                           autocomplete="current-password">
+                </div>
+                
+                <button type="submit" id="loginButton">
+                    <span>Access Portal</span>
+                    <div class="button-spinner hidden"></div>
+                </button>
+                
+                <div id="authError" class="auth-error hidden"></div>
+            </form>
         </div>
-        
-        <form id="authForm" class="auth-form">
-            <div class="form-group">
-                <label for="usernameInput">Username:</label>
-                <input type="text" id="usernameInput" required 
-                       placeholder="Enter your username (e.g., user1, user2...)"
-                       autocomplete="username">
-            </div>
-            
-            <div class="form-group">
-                <label for="passwordInput">Password:</label>
-                <input type="password" id="passwordInput" required 
-                       placeholder="Enter your password"
-                       autocomplete="current-password">
-            </div>
-            
-            <button type="submit" id="loginButton">
-                <span>Access Portal</span>
-                <div class="button-spinner hidden"></div>
-            </button>
-            
-            <div id="authError" class="auth-error hidden"></div>
-        </form>
     </div>
-</div>
 
     <!-- Main Portal -->
     <div id="portalScreen" class="portal-screen hidden">
@@ -205,7 +205,7 @@
     <!-- Hidden iframe for downloads -->
     <iframe id="downloadFrame" style="display: none;"></iframe>
 
-    <!-- JavaScript -->
+    <!-- JavaScript - IMPORTANT: Load in correct order -->
     <script src="assets/js/config.js"></script>
     <script src="assets/js/utils.js"></script>
     <script src="assets/js/auth.js"></script>
@@ -218,28 +218,55 @@
         document.addEventListener('DOMContentLoaded', function() {
             console.log('🚀 Team Portal loading...');
             
-            // Initialize all managers
-            window.App = {
-                auth: new AuthManager(),
-                fileManager: new FileManager(),
-                downloadManager: new DownloadManager(),
-                previewManager: new PreviewManager()
-            };
+            // Verify Config is loaded
+            if (typeof Config === 'undefined') {
+                console.error('❌ Config is not loaded!');
+                document.body.innerHTML = '<div style="text-align: center; padding: 2rem;"><h2>Configuration Error</h2><p>Failed to load application configuration. Please refresh the page.</p></div>';
+                return;
+            }
             
-            // Start the application
-            window.App.auth.init();
+            // Verify Utils is loaded
+            if (typeof Utils === 'undefined') {
+                console.error('❌ Utils is not loaded!');
+                document.body.innerHTML = '<div style="text-align: center; padding: 2rem;"><h2>Utilities Error</h2><p>Failed to load application utilities. Please refresh the page.</p></div>';
+                return;
+            }
+            
+            console.log('✅ Core modules loaded successfully');
+            
+            // Initialize all managers
+            try {
+                window.App = {
+                    auth: new AuthManager(),
+                    fileManager: new FileManager(),
+                    downloadManager: new DownloadManager(),
+                    previewManager: new PreviewManager()
+                };
+                
+                // Start the application
+                window.App.auth.init();
+                
+                console.log('✅ Application initialized successfully');
+            } catch (error) {
+                console.error('❌ Failed to initialize application:', error);
+                Utils.showError('Failed to initialize application. Please refresh the page.');
+            }
         });
 
         // Global error handler
         window.addEventListener('error', function(event) {
             console.error('Global error:', event.error);
-            Utils.showError('An unexpected error occurred. Please refresh the page.');
+            if (typeof Utils !== 'undefined') {
+                Utils.showError('An unexpected error occurred. Please refresh the page.');
+            }
         });
 
         // Handle unhandled promise rejections
         window.addEventListener('unhandledrejection', function(event) {
             console.error('Unhandled promise rejection:', event.reason);
-            Utils.showError('An error occurred while processing your request.');
+            if (typeof Utils !== 'undefined') {
+                Utils.showError('An error occurred while processing your request.');
+            }
         });
     </script>
 </body>
