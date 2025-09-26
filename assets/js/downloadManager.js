@@ -770,248 +770,40 @@ class DownloadManager {
 // Replace the downloadFiles function in downloadManager.js
 
 async downloadFiles(files) {
-    if (!files || files.length === 0) {
-        this.showToast('No files to download', 'warning');
-        return;
-    }
-
-    console.log(`Starting download of ${files.length} files`);
-
-    // Add files to queue
-    this.downloadQueueData = files.map(file => ({
-        id: file.id,
-        name: file.name,
-        mimeType: file.mimeType,
-        size: file.size,
-        status: 'queued',
-        url: `https://drive.google.com/uc?export=download&id=${file.id}`,
-        progress: 0
-    }));
-
-    this.showWidget();
-    this.updateUI();
-
-    // Handle based on file count and device
-    if (files.length === 1) {
-        // Single file - download immediately
-        this.downloadSingleFile(this.downloadQueueData[0]);
-    } else if (files.length <= 10) {
-        // Small batch - ask user preference
-        this.showBatchOptions('small');
-    } else {
-        // Large batch - recommend alternatives
-        this.showBatchOptions('large');
-    }
-}
-
-showBatchOptions(batchSize) {
-    const downloadList = document.getElementById('downloadList');
-    const totalFiles = this.downloadQueueData.length;
-    
-    if (batchSize === 'large') {
-        downloadList.innerHTML = `
-            <div class="batch-warning">
-                <div class="warning-icon">⚠️</div>
-                <h4>${totalFiles} files selected</h4>
-                <p>Downloading many files may cause browser issues. Choose the best option:</p>
-                
-                <div class="batch-options">
-                    <button class="batch-btn primary" onclick="window.App.downloadManager.downloadWithDelay()">
-                        ⚡ Download All (Recommended)
-                        <small>Downloads with delays to prevent browser blocking</small>
-                    </button>
-                    
-                    <button class="batch-btn secondary" onclick="window.App.downloadManager.showDownloadLinks()">
-                        📋 Get Download Links
-                        <small>Copy links to download manually or with download manager</small>
-                    </button>
-                    
-                    <button class="batch-btn tertiary" onclick="window.App.downloadManager.downloadInBatches()">
-                        📦 Download in Batches of 10
-                        <small>Safer for large collections</small>
-                    </button>
-                </div>
-            </div>
-        `;
-    } else {
-        downloadList.innerHTML = `
-            <div class="batch-options">
-                <div class="batch-info">
-                    <h4>${totalFiles} files ready</h4>
-                    <p>How would you like to download?</p>
-                </div>
-                
-                <button class="batch-btn primary" onclick="window.App.downloadManager.downloadWithDelay()">
-                    📥 Download All Now
-                    <small>Downloads automatically with small delays</small>
-                </button>
-                
-                <button class="batch-btn secondary" onclick="window.App.downloadManager.downloadOneByOne()">
-                    👆 One by One
-                    <small>Click each file when ready</small>
-                </button>
-            </div>
-        `;
-    }
-}
-
-// Download with delays (works in all browsers)
-async downloadWithDelay() {
-    this.showToast('Starting downloads with browser-safe delays...', 'info');
-    
-    for (let i = 0; i < this.downloadQueueData.length; i++) {
-        const item = this.downloadQueueData[i];
-        
-        // Update status
-        item.status = 'downloading';
-        this.updateItemUI(item);
-        
-        // Create and trigger download
-        const link = document.createElement('a');
-        link.href = item.url;
-        link.download = item.name;
-        link.style.display = 'none';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        // Mark as completed
-        item.status = 'completed';
-        this.updateItemUI(item);
-        
-        // Research-proven delay: 200ms works reliably
-        if (i < this.downloadQueueData.length - 1) {
-            await this.delay(200);
-        }
-    }
-    
-    this.showToast('All downloads started! Check your Downloads folder.', 'success');
-    this.updateQueueUI();
-}
-
-// Download in safe batches of 10
-async downloadInBatches() {
-    const batchSize = 10;
-    const batches = [];
-    
-    // Split into batches
-    for (let i = 0; i < this.downloadQueueData.length; i += batchSize) {
-        batches.push(this.downloadQueueData.slice(i, i + batchSize));
-    }
-    
-    this.showToast(`Downloading ${batches.length} batches of up to ${batchSize} files...`, 'info');
-    
-    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-        const batch = batches[batchIndex];
-        
-        // Download batch with delays
-        for (let i = 0; i < batch.length; i++) {
-            const item = batch[i];
-            item.status = 'downloading';
-            this.updateItemUI(item);
-            
-            const link = document.createElement('a');
-            link.href = item.url;
-            link.download = item.name;
-            link.style.display = 'none';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            item.status = 'completed';
-            this.updateItemUI(item);
-            
-            if (i < batch.length - 1) {
-                await this.delay(200);
-            }
+        if (!files || files.length === 0) {
+            this.showToast('No files to download', 'warning');
+            return;
         }
         
-        // Longer delay between batches
-        if (batchIndex < batches.length - 1) {
-            this.showToast(`Batch ${batchIndex + 1}/${batches.length} complete. Starting next batch in 3 seconds...`, 'info');
-            await this.delay(3000);
+        console.log(`Starting download of ${files.length} files`);
+        
+        // Add files to queue
+        const queueItems = files.map(file => ({
+            id: file.id,
+            name: file.name,
+            mimeType: file.mimeType,
+            size: file.size,
+            status: 'queued',
+            progress: 0,
+            error: null,
+            retries: 0,
+            startTime: null,
+            endTime: null
+        }));
+        
+        this.downloadQueueData.push(...queueItems);
+        
+        // Show widget
+        this.showWidget();
+        this.updateUI();
+        
+        // Start processing
+        if (!this.isDownloading) {
+            this.processDownloadQueue();
         }
+        
+        this.showToast(files.length === 1 ? 'Download started' : `Started downloading ${files.length} files`, 'success');
     }
-    
-    this.showToast('All batches completed!', 'success');
-}
-
-// Show downloadable links
-showDownloadLinks() {
-    const links = this.downloadQueueData.map(item => ({
-        name: item.name,
-        url: item.url
-    }));
-    
-    const modal = document.createElement('div');
-    modal.className = 'download-links-modal';
-    modal.innerHTML = `
-        <div class="modal-overlay" onclick="this.parentElement.remove()"></div>
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>📋 Download Links (${links.length} files)</h3>
-                <button class="close-btn" onclick="this.closest('.download-links-modal').remove()">×</button>
-            </div>
-            <div class="modal-body">
-                <p><strong>💡 Pro tip:</strong> Use a download manager like IDM, FDM, or browser extensions for better batch downloading.</p>
-                
-                <div class="copy-actions">
-                    <button class="copy-btn primary" onclick="navigator.clipboard.writeText('${links.map(l => l.url).join('\\n')}').then(() => this.textContent='✅ All Copied!')">
-                        📋 Copy All Links
-                    </button>
-                    <button class="copy-btn secondary" onclick="window.App.downloadManager.exportAsText()">
-                        💾 Download as Text File
-                    </button>
-                </div>
-                
-                <div class="links-container">
-                    ${links.map((link, index) => `
-                        <div class="link-item">
-                            <div class="file-info">
-                                <span class="file-number">${index + 1}.</span>
-                                <span class="file-name" title="${link.name}">${this.sanitizeHTML(link.name)}</span>
-                            </div>
-                            <button class="copy-btn-small" onclick="navigator.clipboard.writeText('${link.url}').then(() => this.textContent='✅')">
-                                📋
-                            </button>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-        </div>
-    `;
-    
-    document.body.appendChild(modal);
-}
-
-// Export links as downloadable text file
-exportAsText() {
-    const linksText = this.downloadQueueData.map((item, index) => 
-        `${index + 1}. ${item.name}\n   ${item.url}\n`
-    ).join('\n');
-    
-    const content = `Download Links - Generated ${new Date().toLocaleString()}\n${'='.repeat(50)}\n\n${linksText}`;
-    
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `download-links-${Date.now()}.txt`;
-    link.click();
-    
-    URL.revokeObjectURL(url);
-    this.showToast('Links exported as text file!', 'success');
-}
-
-// Allow individual downloads
-downloadOneByOne() {
-    this.downloadQueueData.forEach(item => {
-        item.status = 'ready';
-    });
-    this.updateQueueUI();
-    this.showToast('Click the download button next to each file when ready', 'info');
-}
     
     async processDownloadQueue() {
         if (this.isDownloading) return;
