@@ -26,10 +26,7 @@ jobs:
       - name: Build project
         run: npm run build
         env:
-          # Add any Google API credentials as environment variables
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          # Add any other environment variables your buildDatabase.js might need
+          GOOGLE_DRIVE_API_KEY: ${{ secrets.GOOGLE_DRIVE_API_KEY }}
 
       - name: Publish to Cloudflare Pages
         uses: cloudflare/pages-action@v1
