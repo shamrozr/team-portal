@@ -440,22 +440,22 @@ loadPDFPreview(file, container) {
     }
     
     showPreviewError(file, container) {
-        container.innerHTML = `
-            <div class="preview-error">
-                <div class="preview-error-icon">📄</div>
-                <h3>Preview not available</h3>
-                <p>Unable to load preview for ${file.name}</p>
-                <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-                    <button class="preview-btn" onclick="window.App.previewManager.downloadCurrentFile()">
-                        📥 Download File
-                    </button>
-                    <button class="preview-btn" onclick="window.open('https://drive.google.com/file/d/${file.id}/view', '_blank')">
-                        🔗 Open in Drive
-                    </button>
-                </div>
+    container.innerHTML = `
+        <div class="preview-error">
+            <div class="preview-error-icon">📄</div>
+            <h3>Preview not available</h3>
+            <p>Unable to load preview for ${file.name}</p>
+            <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                <button class="preview-btn" onclick="window.App.downloadManager.downloadSingleFile('${file.id}', '${file.name}')">
+                    📥 Download File
+                </button>
+                <button class="preview-btn" onclick="window.open('https://drive.google.com/file/d/${file.id}/view', '_blank')">
+                    🔗 Open in Drive
+                </button>
             </div>
-        `;
-    }
+        </div>
+    `;
+}
     
     isDocumentType(mimeType) {
         const documentTypes = [
@@ -486,10 +486,11 @@ loadPDFPreview(file, container) {
     }
     
     downloadCurrentFile() {
-        if (this.currentFile && window.App?.downloadManager) {
-            window.App.downloadManager.downloadFiles([this.currentFile]);
-        }
+    if (this.currentFile && window.App?.downloadManager) {
+        // Use the new individual download method instead of the old downloadFiles method
+        window.App.downloadManager.downloadSingleFile(this.currentFile.id, this.currentFile.name);
     }
+}
 }
 
 // Export for modules
