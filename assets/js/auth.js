@@ -1,4 +1,4 @@
-// assets/js/auth.js - Authentication management
+// assets/js/auth.js - Authentication management with persistent login
 
 class AuthManager {
     constructor() {
@@ -9,7 +9,7 @@ class AuthManager {
         this.authScreen = Utils.dom.select('#authScreen');
         this.portalScreen = Utils.dom.select('#portalScreen');
         
-        // Form elements - updated for text input
+        // Form elements
         this.usernameInput = Utils.dom.select('#usernameInput');
         this.passwordInput = Utils.dom.select('#passwordInput');
         this.loginButton = Utils.dom.select('#loginButton');
@@ -28,16 +28,22 @@ class AuthManager {
             // Update loading status
             this.updateLoadingStatus('Loading authentication data...');
             
-            // Load authentication data from Excel/CSV URL
+            // Load authentication data
             await this.loadAuthData();
             
-            // Check for existing session
+            // Check for existing session (7-day persistence)
             const savedAuth = Utils.storage.get(Config.STORAGE_KEYS.AUTH_TOKEN);
             if (savedAuth && this.validateSavedAuth(savedAuth)) {
                 this.currentUser = savedAuth;
                 this.isAuthenticated = true;
+                
+                // Extend session on each visit
+                this.extendSession();
+                
                 this.showPortal();
             } else {
+                // Clear invalid session
+                Utils.storage.remove(Config.STORAGE_KEYS.AUTH_TOKEN);
                 this.showAuthScreen();
             }
             
@@ -50,20 +56,8 @@ class AuthManager {
     
     async loadAuthData() {
         try {
-            // Load from Excel/CSV URL if provided, otherwise fall back to local file
-            const authUrl = Config.AUTH_DATA_URL || Config.AUTH_DATA_PATH;
-            
-            Config.log('debug', `Loading auth data from: ${authUrl}`);
-            
-            let csvData;
-            if (authUrl.startsWith('http')) {
-                // Load from external URL (Excel/CSV download link)
-                csvData = await this.fetchExternalCSV(authUrl);
-            } else {
-                // Load from local file
-                csvData = await Utils.fetchCSV(authUrl);
-            }
-            
+            // Load from local CSV file (downloaded during build)
+            const csvData = await Utils.fetchCSV(Config.AUTH_DATA_PATH);
             this.authData = csvData;
             
             Config.log('debug', `Loaded ${this.authData.length} authentication records`);
@@ -71,27 +65,6 @@ class AuthManager {
         } catch (error) {
             Config.log('error', 'Failed to load auth data:', error);
             throw new Error('Failed to load authentication configuration');
-        }
-    }
-    
-    async fetchExternalCSV(url) {
-        try {
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'text/csv,text/plain,application/csv,*/*'
-                }
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            
-            const csvText = await response.text();
-            return Utils.parseCSV(csvText);
-        } catch (error) {
-            Config.log('error', `Failed to fetch external CSV from ${url}:`, error);
-            throw error;
         }
     }
     
@@ -179,12 +152,13 @@ class AuthManager {
                 this.currentUser = user;
                 this.isAuthenticated = true;
                 
-                // Save session
-                Utils.storage.set(Config.STORAGE_KEYS.AUTH_TOKEN, user, Config.CACHE_SETTINGS.AUTH_DATA_TTL);
+                // Save session for 7 days (persistent login)
+                const sessionDuration = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
+                Utils.storage.set(Config.STORAGE_KEYS.AUTH_TOKEN, user, sessionDuration);
                 
                 // Show success feedback
                 Utils.dom.addClass(Utils.dom.select('.auth-container'), 'success');
-                Utils.showSuccess(Config.SUCCESS_MESSAGES.LOGIN_SUCCESS);
+                Utils.showSuccess('✅ Login successful! You\'ll stay logged in for 7 days.');
                 
                 // Navigate to portal after brief delay
                 setTimeout(() => {
@@ -205,7 +179,7 @@ class AuthManager {
     
     async authenticateUser(username, password) {
         return new Promise((resolve) => {
-            // Find user in auth data - match by manager field (which contains the username)
+            // Find user in auth data
             const user = this.authData.find(u => 
                 u.manager.toLowerCase() === username.toLowerCase() && u.password === password
             );
@@ -214,7 +188,8 @@ class AuthManager {
                 resolve({
                     manager: user.manager,
                     role: user.role,
-                    loginTime: new Date().toISOString()
+                    loginTime: new Date().toISOString(),
+                    sessionVersion: this.getSessionVersion() // For session invalidation when passwords change
                 });
             } else {
                 resolve(null);
@@ -224,17 +199,68 @@ class AuthManager {
     
     validateSavedAuth(savedAuth) {
         // Check if saved auth is still valid
-        if (!savedAuth.manager || !savedAuth.role) {
+        if (!savedAuth.manager || !savedAuth.role || !savedAuth.loginTime) {
             return false;
         }
         
-        // Check if user still exists in auth data
+        // Check if user still exists in auth data with same credentials
         const userExists = this.authData.some(u => 
             u.manager.toLowerCase() === savedAuth.manager.toLowerCase() && 
             u.role === savedAuth.role
         );
         
-        return userExists;
+        if (!userExists) {
+            Config.log('debug', 'User no longer exists in auth data');
+            return false;
+        }
+        
+        // Check session age (max 7 days)
+        const sessionAge = Date.now() - new Date(savedAuth.loginTime).getTime();
+        const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
+        
+        if (sessionAge > maxAge) {
+            Config.log('debug', 'Session expired due to age');
+            return false;
+        }
+        
+        // Check session version (invalidate if passwords changed)
+        const currentVersion = this.getSessionVersion();
+        if (savedAuth.sessionVersion && savedAuth.sessionVersion !== currentVersion) {
+            Config.log('debug', 'Session invalidated due to credential changes');
+            return false;
+        }
+        
+        return true;
+    }
+    
+    getSessionVersion() {
+        // Create a simple hash of all user credentials to detect changes
+        // When CSV data changes (passwords updated), sessions will be invalidated
+        const credentialString = this.authData
+            .map(u => `${u.manager}:${u.password}:${u.role}`)
+            .sort()
+            .join('|');
+        
+        // Simple hash function
+        let hash = 0;
+        for (let i = 0; i < credentialString.length; i++) {
+            const char = credentialString.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+        
+        return hash.toString(36);
+    }
+    
+    extendSession() {
+        if (this.isAuthenticated && this.currentUser) {
+            // Update last access time and extend session
+            this.currentUser.lastAccess = new Date().toISOString();
+            const sessionDuration = 7 * 24 * 60 * 60 * 1000; // 7 days
+            Utils.storage.set(Config.STORAGE_KEYS.AUTH_TOKEN, this.currentUser, sessionDuration);
+            
+            Config.log('debug', 'Session extended for 7 more days');
+        }
     }
     
     validateForm() {
@@ -266,7 +292,7 @@ class AuthManager {
             this.clearError();
             
             // Show success message
-            Utils.showSuccess(Config.SUCCESS_MESSAGES.LOGOUT_SUCCESS);
+            Utils.showSuccess('Successfully logged out. See you next time!');
             
             // Navigate to auth screen
             this.showAuthScreen();
@@ -301,15 +327,57 @@ class AuthManager {
         
         // Update user info display
         if (this.userInfo && this.currentUser) {
-            this.userInfo.textContent = `Welcome, ${this.currentUser.manager}`;
+            const loginDuration = this.getLoginDuration();
+            this.userInfo.textContent = `Welcome back, ${this.currentUser.manager}`;
             if (this.currentUser.role === 'admin') {
                 this.userInfo.textContent += ' (Admin)';
+            }
+            if (loginDuration) {
+                this.userInfo.title = `Logged in ${loginDuration} ago. Session expires in ${this.getSessionTimeRemaining()}.`;
             }
         }
         
         // Initialize file manager if authenticated
         if (window.App?.fileManager) {
             window.App.fileManager.init();
+        }
+    }
+    
+    getLoginDuration() {
+        if (!this.currentUser?.loginTime) return '';
+        
+        const loginTime = new Date(this.currentUser.loginTime);
+        const now = new Date();
+        const diffTime = Math.abs(now - loginTime);
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        const diffHours = Math.floor((diffTime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        
+        if (diffDays > 0) {
+            return `${diffDays} day${diffDays > 1 ? 's' : ''}`;
+        } else if (diffHours > 0) {
+            return `${diffHours} hour${diffHours > 1 ? 's' : ''}`;
+        } else {
+            return 'today';
+        }
+    }
+    
+    getSessionTimeRemaining() {
+        if (!this.currentUser?.loginTime) return '';
+        
+        const loginTime = new Date(this.currentUser.loginTime);
+        const expiryTime = new Date(loginTime.getTime() + (7 * 24 * 60 * 60 * 1000));
+        const now = new Date();
+        const timeRemaining = expiryTime - now;
+        
+        if (timeRemaining <= 0) return 'expired';
+        
+        const daysRemaining = Math.floor(timeRemaining / (1000 * 60 * 60 * 24));
+        const hoursRemaining = Math.floor((timeRemaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        
+        if (daysRemaining > 0) {
+            return `${daysRemaining} day${daysRemaining > 1 ? 's' : ''}`;
+        } else {
+            return `${hoursRemaining} hour${hoursRemaining > 1 ? 's' : ''}`;
         }
     }
     
@@ -391,9 +459,7 @@ class AuthManager {
     
     // Session management
     refreshSession() {
-        if (this.isAuthenticated && this.currentUser) {
-            Utils.storage.set(Config.STORAGE_KEYS.AUTH_TOKEN, this.currentUser, Config.CACHE_SETTINGS.AUTH_DATA_TTL);
-        }
+        this.extendSession();
     }
     
     getSessionInfo() {
@@ -402,7 +468,8 @@ class AuthManager {
             user: this.currentUser,
             loginTime: this.currentUser?.loginTime,
             sessionDuration: this.currentUser?.loginTime ? 
-                Date.now() - new Date(this.currentUser.loginTime).getTime() : 0
+                Date.now() - new Date(this.currentUser.loginTime).getTime() : 0,
+            timeRemaining: this.getSessionTimeRemaining()
         };
     }
 }
