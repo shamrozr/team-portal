@@ -39,6 +39,18 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Debug Environment Variables
+        run: |
+          echo "🔍 Debugging environment setup..."
+          echo "AUTH_CSV_URL is set: ${{ vars.AUTH_CSV_URL != '' }}"
+          if [ -n "${{ vars.AUTH_CSV_URL }}" ]; then
+            echo "✅ AUTH_CSV_URL is configured"
+          else
+            echo "❌ AUTH_CSV_URL is not set!"
+            echo "Please add it to GitHub Variables"
+            exit 1
+          fi
+
       - name: Download Authentication Data
         if: github.event.inputs.download_auth == 'true'
         run: |
