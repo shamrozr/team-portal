@@ -222,7 +222,11 @@ window.Utils = {
     },
     
     // Toast notification system
-    showToast(message, type = 'info', duration = Config.UI_SETTINGS.TOAST_DURATION) {
+    showToast(message, type = 'info', duration = null) {
+        // Use fallback duration if Config not available yet
+        const toastDuration = (window.Config && window.Config.UI_SETTINGS) ? 
+            window.Config.UI_SETTINGS.TOAST_DURATION : 5000;
+        const actualDuration = duration || toastDuration;
         const toast = this.dom.create('div', {
             className: `toast toast-${type}`,
             textContent: message
