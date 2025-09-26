@@ -15,9 +15,12 @@ class DownloadManager {
     }
     
     detectMobile() {
-        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
-               window.innerWidth <= 768;
-    }
+    const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const isMobileScreen = window.innerWidth <= 768;
+    const isTouchDevice = 'ontouchstart' in window;
+    
+    return isMobileUA || (isMobileScreen && isTouchDevice);
+}
     
     createDownloadWidget() {
         // Remove existing widget
@@ -458,13 +461,22 @@ class DownloadManager {
             
             console.log(`Downloading file: ${item.name}`);
             
-            const downloadUrl = `https://drive.google.com/uc?export=download&id=${item.id}`;
+            const downloadUrl = this.isMobile ? 
+                `https://drive.google.com/uc?export=download&id=${item.id}&confirm=t` :
+                `https://drive.google.com/uc?export=download&id=${item.id}`;
             
+            // And for mobile, add this right after:
             if (this.isMobile) {
-                // Mobile: Use direct link opening
-                await this.downloadWithDirectLink(downloadUrl, item.name);
+                // Force download on mobile
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.download = item.name;
+                link.style.display = 'none';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
             } else {
-                // Desktop: Use iframe method
+                // Use iframe for desktop
                 await this.downloadWithIframe(downloadUrl, item.name);
             }
             
@@ -500,22 +512,21 @@ class DownloadManager {
     }
     
     downloadWithDirectLink(url, filename) {
-        return new Promise((resolve) => {
-            // For mobile, create a temporary link and click it
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = filename;
-            link.target = '_blank';
-            link.style.display = 'none';
-            
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            // Resolve after a short delay
-            setTimeout(resolve, 1000);
-        });
-    }
+    return new Promise((resolve) => {
+        // Create a hidden iframe for seamless downloads
+        const downloadIframe = document.createElement('iframe');
+        downloadIframe.style.cssText = 'display: none; width: 0; height: 0;';
+        downloadIframe.src = url;
+        
+        document.body.appendChild(downloadIframe);
+        
+        // Clean up after download starts
+        setTimeout(() => {
+            document.body.removeChild(downloadIframe);
+            resolve();
+        }, 2000);
+    });
+}
     
     downloadWithIframe(url, filename) {
         return new Promise((resolve, reject) => {
