@@ -1,16 +1,56 @@
-name: Deploy to Cloudflare Pages
+name: Manual Build and Deploy to Cloudflare Pages
 
+# Only run on manual trigger or specific commits with [deploy] tag
 on:
+  workflow_dispatch: # Manual trigger only
+    inputs:
+      rebuild_database:
+        description: 'Rebuild Google Drive database'
+        required: true
+        default: 'true'
+        type: boolean
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+        - production
+        - preview
   push:
     branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
-  workflow_dispatch: # This adds a manual "Run workflow" button
+    # Only deploy if commit message contains [deploy]
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+      - '.gitignore'
 
 jobs:
-  deploy:
+  check-deploy:
     runs-on: ubuntu-latest
-    name: Deploy to Cloudflare Pages
+    outputs:
+      should_deploy: ${{ steps.check.outputs.should_deploy }}
+    steps:
+      - name: Check if should deploy
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            if [[ "${{ github.event.head_commit.message }}" == *"[deploy]"* ]]; then
+              echo "should_deploy=true" >> $GITHUB_OUTPUT
+            else
+              echo "should_deploy=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "should_deploy=false" >> $GITHUB_OUTPUT
+          fi
+
+  build-and-deploy:
+    needs: check-deploy
+    if: needs.check-deploy.outputs.should_deploy == 'true'
+    runs-on: ubuntu-latest
+    name: Build Database and Deploy
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -19,21 +59,79 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm install
 
-      - name: Build project
+      - name: Check if database rebuild is needed
+        id: check_rebuild
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ github.event.inputs.rebuild_database }}" = "true" ]; then
+              echo "rebuild=true" >> $GITHUB_OUTPUT
+            else
+              echo "rebuild=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            # For push events, always rebuild
+            echo "rebuild=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build Google Drive Database
+        if: steps.check_rebuild.outputs.rebuild == 'true'
         run: npm run build
         env:
           GOOGLE_DRIVE_API_KEY: ${{ secrets.GOOGLE_DRIVE_API_KEY }}
+          GOOGLE_DRIVE_ROOT_FOLDER_ID: ${{ vars.GOOGLE_DRIVE_ROOT_FOLDER_ID }}
+          OUTPUT_PATH: './data/drive.json'
 
-      - name: Publish to Cloudflare Pages
+      - name: Verify database exists
+        run: |
+          if [ -f "./data/drive.json" ]; then
+            echo "✅ Database file found"
+            echo "File size: $(stat -f%z ./data/drive.json 2>/dev/null || stat -c%s ./data/drive.json) bytes"
+            echo "First 200 characters of the database:"
+            head -c 200 ./data/drive.json
+            echo ""
+            echo "Database structure preview:"
+            jq -r '.name // "Unknown"' ./data/drive.json 2>/dev/null || echo "Could not parse JSON"
+            echo "Total children: $(jq '.children | length' ./data/drive.json 2>/dev/null || echo 'Unknown')"
+          else
+            echo "❌ Database file not found!"
+            exit 1
+          fi
+
+      - name: Validate required files
+        run: |
+          echo "📋 Checking required files..."
+          required_files=("index.html" "data/drive.json" "data/auth.csv" "assets/js/config.js" "assets/js/utils.js" "assets/js/auth.js")
+          
+          for file in "${required_files[@]}"; do
+            if [ -f "$file" ]; then
+              echo "✅ $file exists"
+            else
+              echo "❌ $file missing"
+              exit 1
+            fi
+          done
+
+      - name: Deploy to Cloudflare Pages
         uses: cloudflare/pages-action@v1
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: team-portal # Change this to your Cloudflare Pages project name
-          directory: ./ # Build output directory
+          projectName: team-portal
+          directory: ./
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
           wranglerVersion: '3'
+
+      - name: Deployment Summary
+        run: |
+          echo "🚀 Deployment completed successfully!"
+          echo "Environment: ${{ github.event.inputs.environment || 'production' }}"
+          echo "Database rebuilt: ${{ steps.check_rebuild.outputs.rebuild }}"
+          echo "Trigger: ${{ github.event_name }}"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "Commit: ${{ github.event.head_commit.message }}"
+          fi
