@@ -23,6 +23,9 @@ class GoogleDriveDatabase {
     try {
       const startTime = Date.now();
       
+      // Test API connection first
+      await this.testAPIConnection();
+      
       // Build the folder hierarchy
       const rootStructure = await this.processFolder(
         this.rootFolderId || 'root', 
@@ -40,11 +43,30 @@ class GoogleDriveDatabase {
       // Convert to the required format
       const formattedData = this.formatForPortal(rootStructure);
       
+      // Debug: Print first level of structure
+      this.debugStructure(formattedData);
+      
       return formattedData;
       
     } catch (error) {
       console.error('❌ Database build failed:', error);
       throw error;
+    }
+  }
+
+  async testAPIConnection() {
+    console.log('🔧 Testing API connection...');
+    try {
+      const response = await this.drive.files.get({
+        fileId: this.rootFolderId || 'root',
+        fields: 'id,name,mimeType'
+      });
+      
+      console.log(`✅ API connection successful. Root folder: ${response.data.name || 'Drive Root'}`);
+      this.apiCallCount++;
+    } catch (error) {
+      console.error('❌ API connection failed:', error);
+      throw new Error(`Failed to connect to Google Drive API: ${error.message}`);
     }
   }
 
@@ -102,14 +124,18 @@ class GoogleDriveDatabase {
         });
       }
       
-      // Process subfolders recursively
-      for (const folder of folders) {
-        const folderPath = currentPath ? `${currentPath}/${folder.name}` : `/${folder.name}`;
-        const subfolderData = await this.processFolder(folder.id, folderPath, depth + 1);
-        
-        if (subfolderData) {
-          folderData.children.push(subfolderData);
+      // Process subfolders recursively (limit depth to prevent infinite loops)
+      if (depth < 10) {
+        for (const folder of folders) {
+          const folderPath = currentPath ? `${currentPath}/${folder.name}` : `/${folder.name}`;
+          const subfolderData = await this.processFolder(folder.id, folderPath, depth + 1);
+          
+          if (subfolderData) {
+            folderData.children.push(subfolderData);
+          }
         }
+      } else {
+        console.log(`${indent}⚠️  Maximum depth reached, skipping subfolders`);
       }
       
       this.folderMap.set(folderId, folderData);
@@ -148,11 +174,13 @@ class GoogleDriveDatabase {
   async getAllItems(folderId) {
     let allItems = [];
     let pageToken = null;
+    const maxRetries = 3;
+    let retryCount = 0;
     
     do {
-      this.apiCallCount++;
-      
       try {
+        this.apiCallCount++;
+        
         const response = await this.drive.files.list({
           q: `'${folderId}' in parents and trashed=false`,
           fields: 'nextPageToken,files(id,name,mimeType,size,modifiedTime,parents)',
@@ -167,17 +195,21 @@ class GoogleDriveDatabase {
           console.log(`   📥 Retrieved ${response.data.files.length} items (Total: ${allItems.length})`);
         }
         
+        retryCount = 0; // Reset retry count on success
+        
       } catch (error) {
         console.error(`Error listing files in folder ${folderId}:`, error.message);
         
         // If it's a rate limit error, wait and retry
-        if (error.code === 429) {
-          console.log('   ⏳ Rate limited, waiting 5 seconds...');
-          await new Promise(resolve => setTimeout(resolve, 5000));
+        if (error.code === 429 && retryCount < maxRetries) {
+          retryCount++;
+          const waitTime = Math.pow(2, retryCount) * 1000; // Exponential backoff
+          console.log(`   ⏳ Rate limited, waiting ${waitTime}ms... (Retry ${retryCount}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
           continue; // Retry this iteration
         }
         
-        break; // For other errors, stop pagination
+        break; // For other errors or max retries reached, stop pagination
       }
       
     } while (pageToken);
@@ -213,6 +245,48 @@ class GoogleDriveDatabase {
     return flattenStructure(structure);
   }
 
+  debugStructure(structure, maxItems = 100) {
+    console.log('\n🔍 DEBUG: Database Structure Preview');
+    console.log('=' .repeat(50));
+    
+    let itemCount = 0;
+    
+    function printNode(node, indent = '') {
+      if (itemCount >= maxItems) {
+        console.log(`${indent}... (showing first ${maxItems} items)`);
+        return;
+      }
+      
+      const icon = node.type === 'folder' ? '📁' : '📄';
+      const size = node.size ? ` (${this.formatBytes(node.size)})` : '';
+      console.log(`${indent}${icon} ${node.name}${size}`);
+      itemCount++;
+      
+      if (node.children && node.children.length > 0) {
+        const childIndent = indent + '  ';
+        for (const child of node.children.slice(0, 10)) { // Limit children shown
+          printNode.call(this, child, childIndent);
+          if (itemCount >= maxItems) break;
+        }
+        
+        if (node.children.length > 10) {
+          console.log(`${childIndent}... and ${node.children.length - 10} more items`);
+        }
+      }
+    }
+    
+    printNode.call(this, structure);
+    console.log('\n' + '=' .repeat(50));
+  }
+
+  formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
   countFiles(structure) {
     let count = 0;
     
@@ -241,6 +315,13 @@ class GoogleDriveDatabase {
     fs.writeFileSync(outputPath, jsonData);
     console.log(`💾 Database saved to: ${outputPath}`);
     console.log(`📏 File size: ${(jsonData.length / 1024).toFixed(2)} KB`);
+    
+    // Also save a minified version for production
+    const minifiedData = JSON.stringify(data);
+    const minifiedPath = outputPath.replace('.json', '.min.json');
+    fs.writeFileSync(minifiedPath, minifiedData);
+    console.log(`💾 Minified version saved to: ${minifiedPath}`);
+    console.log(`📏 Minified size: ${(minifiedData.length / 1024).toFixed(2)} KB`);
   }
 }
 
@@ -252,18 +333,19 @@ async function main() {
   // Get configuration from environment variables
   const config = {
     apiKey: process.env.GOOGLE_DRIVE_API_KEY,
-    rootFolderId: process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID,
+    rootFolderId: process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID || '1G9QC1GTuMHvnMBHNCD--ImNU0b2FUet7',
     outputPath: process.env.OUTPUT_PATH || './data/drive.json'
   };
   
   // Validate configuration
   if (!config.apiKey) {
     console.error('❌ GOOGLE_DRIVE_API_KEY environment variable is required');
+    console.log('💡 Set it in your environment or GitHub secrets');
     process.exit(1);
   }
   
   console.log('🔑 API Key configured');
-  console.log(`📁 Root folder: ${config.rootFolderId || 'root'}`);
+  console.log(`📁 Root folder: ${config.rootFolderId}`);
   console.log(`💾 Output path: ${config.outputPath}\n`);
   
   try {
@@ -282,7 +364,8 @@ async function main() {
       apiCalls: dbBuilder.apiCallCount,
       foldersProcessed: dbBuilder.processedFolders.size,
       totalFiles: dbBuilder.countFiles(databaseData),
-      rootFolderId: config.rootFolderId
+      rootFolderId: config.rootFolderId,
+      rootFolderName: databaseData.name
     };
     
     const summaryPath = config.outputPath.replace('.json', '-summary.json');
@@ -290,9 +373,29 @@ async function main() {
     console.log(`📊 Summary saved to: ${summaryPath}`);
     
     console.log('\n✅ Database build completed successfully!');
+    console.log('\n📋 Next steps:');
+    console.log('1. Commit and push the generated drive.json file');
+    console.log('2. Deploy your changes to Cloudflare Pages');
+    console.log('3. Test the portal with the new database');
     
   } catch (error) {
     console.error('\n❌ Build failed:', error);
+    
+    // Provide helpful error messages
+    if (error.message.includes('API key')) {
+      console.log('\n💡 API Key Issues:');
+      console.log('- Make sure your Google Drive API key is valid');
+      console.log('- Ensure the API key has Drive API access enabled');
+      console.log('- Check that the key is not restricted to specific websites');
+    }
+    
+    if (error.message.includes('folder')) {
+      console.log('\n💡 Folder Access Issues:');
+      console.log('- Make sure the folder ID is correct');
+      console.log('- Ensure the folder is publicly accessible or shared with your API key');
+      console.log(`- Current folder ID: ${config.rootFolderId}`);
+    }
+    
     process.exit(1);
   }
 }
