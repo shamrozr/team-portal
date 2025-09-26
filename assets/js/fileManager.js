@@ -33,28 +33,28 @@ class FileManager {
     }
     
     async init() {
-        if (!window.App?.auth?.isUserAuthenticated()) {
-            Config.log('warn', 'User not authenticated, cannot initialize file manager');
-            return;
-        }
-        
-        try {
-            Config.log('info', 'Initializing file manager...');
-            
-            // Load drive data
-            await this.loadDriveData();
-            
-            // Navigate to saved or root path
-            const savedPath = Utils.storage.get(Config.STORAGE_KEYS.LAST_PATH) || '/';
-            await this.navigateToPath(savedPath);
-            
-            Config.log('info', 'File manager initialized successfully');
-            
-        } catch (error) {
-            Config.log('error', 'Failed to initialize file manager:', error);
-            Utils.showError('Failed to load file system. Please refresh the page.');
-        }
+    if (!window.App?.auth?.isUserAuthenticated()) {
+        Config.log('warn', 'User not authenticated, cannot initialize file manager');
+        return;
     }
+    
+    try {
+        Config.log('info', 'Initializing file manager...');
+        
+        // Load drive data
+        await this.loadDriveData();
+        
+        // Navigate to saved or root path
+        const savedPath = Utils.storage.get(Config.STORAGE_KEYS.LAST_PATH) || '/';
+        await this.navigateToPath(savedPath);
+        
+        Config.log('info', 'File manager initialized successfully');
+        
+    } catch (error) {
+        Config.log('error', 'Failed to initialize file manager:', error);
+        Utils.showError('Failed to load file system. Please refresh the page.');
+    }
+}
     
     async loadDriveData() {
         try {
@@ -193,107 +193,91 @@ class FileManager {
     }
     
     renderFiles() {
-        if (!this.currentFolder) {
-            this.showEmptyState();
-            return;
-        }
-        
-        const items = this.currentFolder.children || [];
-        
-        if (items.length === 0) {
-            this.showEmptyState();
-            return;
-        }
-        
-        Utils.dom.hide(this.emptyState);
-        Utils.dom.show(this.folderActions);
-        
-        // Clear current files
-        this.fileGrid.innerHTML = '';
-        
-        // Sort items - folders first, then files
-        const sortedItems = [...items].sort((a, b) => {
-            if (a.type === 'folder' && b.type !== 'folder') return -1;
-            if (a.type !== 'folder' && b.type === 'folder') return 1;
-            return a.name.localeCompare(b.name, undefined, { numeric: true });
-        });
-        
-        // Render items
-        sortedItems.forEach((item, index) => {
-            const fileElement = this.createFileElement(item, index);
-            this.fileGrid.appendChild(fileElement);
-        });
-        
-        // Apply view mode
-        this.applyViewMode();
+    if (!this.currentFolder) {
+        this.showEmptyState();
+        return;
     }
+
+    const items = this.currentFolder.children || [];
+    
+    if (items.length === 0) {
+        this.showEmptyState();
+        return;
+    }
+
+    Utils.dom.hide(this.emptyState);
+    Utils.dom.show(this.folderActions);
+    
+    // Clear current files
+    this.fileGrid.innerHTML = '';
+    
+    // Sort items - folders first, then files
+    const sortedItems = [...items].sort((a, b) => {
+        if (a.type === 'folder' && b.type !== 'folder') return -1;
+        if (a.type !== 'folder' && b.type === 'folder') return 1;
+        return a.name.localeCompare(b.name, undefined, { numeric: true });
+    });
+    
+    // Render items
+    sortedItems.forEach((item, index) => {
+        const fileElement = this.createFileElement(item, index);
+        this.fileGrid.appendChild(fileElement);
+        
+        // ADD DOWNLOAD BUTTON TO FILES (NOT FOLDERS)
+        if (window.App?.downloadManager && item.type === 'file') {
+            window.App.downloadManager.addDownloadButtonToFile(fileElement, item);
+        }
+    });
+    
+    // Apply view mode
+    this.applyViewMode();
+}
     
     createFileElement(item, index) {
-        const isFolder = item.type === 'folder';
-        const icon = isFolder ? Config.getFileIcon('folder') : Config.getFileIcon(item.mimeType, item.name);
-        const fileCount = isFolder && item.children ? item.children.length : null;
-        
-        const element = Utils.dom.create('div', {
-            className: `file-item ${this.viewMode === 'list' ? 'list-view' : ''}`,
-            'data-id': item.id,
-            'data-type': item.type,
-            'data-name': item.name
-        });
-        
-        element.innerHTML = `
-            ${!isFolder ? `
-                <div class="file-checkbox">
-                    <input type="checkbox" id="checkbox-${item.id}">
-                </div>
-            ` : ''}
-            
-            <div class="file-content ${this.viewMode === 'list' ? 'list-view' : ''}">
-                <div class="file-icon ${this.viewMode === 'list' ? 'list-view' : ''}">${icon}</div>
-                <div class="file-info">
-                    <div class="file-name" title="${Utils.sanitizeHTML(item.name)}">${Utils.sanitizeHTML(item.name)}</div>
-                    <div class="file-details ${this.viewMode === 'list' ? 'list-view' : ''}">
-                        ${isFolder ? 
-                            (fileCount !== null ? `<span class="file-count">${fileCount} items</span>` : '') :
-                            `
-                                ${item.size ? `<span>${Config.formatFileSize(item.size)}</span>` : ''}
-                                ${item.modifiedTime ? `<span>${Config.formatDate(item.modifiedTime)}</span>` : ''}
-                            `
-                        }
-                    </div>
+    const isFolder = item.type === 'folder';
+    const icon = isFolder ? Config.getFileIcon('folder') : Config.getFileIcon(item.mimeType, item.name);
+    const fileCount = isFolder && item.children ? item.children.length : null;
+    
+    const element = Utils.dom.create('div', {
+        className: `file-item ${this.viewMode === 'list' ? 'list-view' : ''}`,
+        'data-id': item.id,
+        'data-type': item.type,
+        'data-name': item.name
+    });
+    
+    // REMOVED CHECKBOX - NO MORE MULTIPLE SELECTION
+    element.innerHTML = `
+        <div class="file-content ${this.viewMode === 'list' ? 'list-view' : ''}">
+            <div class="file-icon ${this.viewMode === 'list' ? 'list-view' : ''}">${icon}</div>
+            <div class="file-info">
+                <div class="file-name" title="${Utils.sanitizeHTML(item.name)}">${Utils.sanitizeHTML(item.name)}</div>
+                <div class="file-details ${this.viewMode === 'list' ? 'list-view' : ''}">
+                    ${isFolder ? 
+                        (fileCount !== null ? `<span class="file-count">${fileCount} items</span>` : '') :
+                        `
+                            ${item.size ? `<span>${Config.formatFileSize(item.size)}</span>` : ''}
+                            ${item.modifiedTime ? `<span>${Config.formatDate(item.modifiedTime)}</span>` : ''}
+                        `
+                    }
                 </div>
             </div>
-        `;
-        
-        // Add click handlers
-        element.addEventListener('click', (e) => {
-            if (e.target.type === 'checkbox') {
-                this.handleFileSelection(item, e.target.checked);
-            } else if (isFolder) {
-                this.navigateToFolder(item);
-            } else {
-                this.openFilePreview(item);
-            }
-        });
-        
-        // Add double-click handler for files
-        if (!isFolder) {
-            element.addEventListener('dblclick', (e) => {
-                e.preventDefault();
-                this.downloadFile(item);
-            });
+        </div>
+    `;
+    
+    // Add click handlers
+    element.addEventListener('click', (e) => {
+        // REMOVED CHECKBOX HANDLING
+        if (isFolder) {
+            this.navigateToFolder(item);
+        } else {
+            this.openFilePreview(item);
         }
-        
-        // Add checkbox change handler
-        const checkbox = element.querySelector('input[type="checkbox"]');
-        if (checkbox) {
-            checkbox.addEventListener('change', (e) => {
-                e.stopPropagation();
-                this.handleFileSelection(item, e.target.checked);
-            });
-        }
-        
-        return element;
-    }
+    });
+    
+    // REMOVED DOUBLE-CLICK DOWNLOAD - NOW HANDLED BY DOWNLOAD BUTTON
+    
+    return element;
+}
     
     navigateToFolder(folder) {
         const newPath = this.currentPath === '/' ? 
@@ -310,17 +294,10 @@ class FileManager {
     }
     
     handleFileSelection(file, selected) {
-        if (selected) {
-            this.selectedFiles.add(file.id);
-        } else {
-            this.selectedFiles.delete(file.id);
-        }
-        
-        this.updateSelectionUI();
-        this.updateFileElementSelection(file.id, selected);
-        
-        Config.log('debug', `File ${selected ? 'selected' : 'deselected'}: ${file.name}`);
-    }
+    // DISABLED - No more multiple selection
+    return;
+}
+
     
     updateFileElementSelection(fileId, selected) {
         const fileElement = Utils.dom.select(`[data-id="${fileId}"]`);
@@ -340,62 +317,26 @@ class FileManager {
     }
     
     selectAllFiles() {
-        const files = this.getCurrentFiles().filter(item => item.type === 'file');
-        
-        files.forEach(file => {
-            this.selectedFiles.add(file.id);
-            this.updateFileElementSelection(file.id, true);
-        });
-        
-        this.updateSelectionUI();
-        
-        if (files.length > 0) {
-            Utils.showSuccess(`Selected ${files.length} files`);
-        }
-    }
-    
-    deselectAllFiles() {
-        this.selectedFiles.clear();
-        
-        // Update UI for all file elements
-        const fileElements = Utils.dom.selectAll('.file-item[data-type="file"]');
-        fileElements.forEach(element => {
-            Utils.dom.removeClass(element, 'selected');
-            const checkbox = element.querySelector('input[type="checkbox"]');
-            if (checkbox) {
-                checkbox.checked = false;
-            }
-        });
-        
-        this.updateSelectionUI();
-    }
+    // DISABLED - No more multiple selection
+    Utils.showInfo('Use individual download buttons on each file');
+}
+
+deselectAllFiles() {
+    // DISABLED - No more multiple selection
+    return;
+}
     
     updateSelectionUI() {
-        const selectedCount = this.selectedFiles.size;
-        
-        if (selectedCount > 0) {
-            this.selectedNumber.textContent = selectedCount;
-            Utils.dom.show(this.selectedCount);
-            Utils.dom.show(this.downloadSelected);
-            Utils.dom.show(this.deselectAllButton);
-        } else {
-            Utils.dom.hide(this.selectedCount);
-            Utils.dom.hide(this.downloadSelected);
-            Utils.dom.hide(this.deselectAllButton);
-        }
-    }
-    
-    downloadSelectedFiles() {
-        if (this.selectedFiles.size === 0) {
-            Utils.showWarning('No files selected for download');
-            return;
-        }
-        
-        const files = this.getSelectedFiles();
-        if (window.App?.downloadManager) {
-            window.App.downloadManager.downloadFiles(files);
-        }
-    }
+    // DISABLED - Hide all selection UI
+    Utils.dom.hide(this.selectedCount);
+    Utils.dom.hide(this.downloadSelected);
+    Utils.dom.hide(this.deselectAllButton);
+}
+
+downloadSelectedFiles() {
+    // DISABLED - No more bulk downloads
+    Utils.showInfo('Use individual download buttons on each file');
+}
     
     downloadFile(file) {
         if (window.App?.downloadManager) {
@@ -403,19 +344,19 @@ class FileManager {
         }
     }
     
-    getSelectedFiles() {
-        const allFiles = this.getCurrentFiles();
-        return allFiles.filter(file => this.selectedFiles.has(file.id));
-    }
+   getSelectedFiles() {
+    // DISABLED - Return empty array
+    return [];
+}
     
     getCurrentFiles() {
         return this.currentFolder?.children || [];
     }
     
     clearSelection() {
-        this.selectedFiles.clear();
-        this.updateSelectionUI();
-    }
+    // DISABLED - No more selection to clear
+    return;
+}
     
     // Navigation history management
     addToHistory(path) {
@@ -608,8 +549,9 @@ class FileManager {
     }
     
     getSelectedCount() {
-        return this.selectedFiles.size;
-    }
+    // DISABLED - Always return 0
+    return 0;
+}
     
     refresh() {
         this.navigateToPath(this.currentPath);
