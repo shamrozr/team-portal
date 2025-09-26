@@ -9,8 +9,8 @@ class AuthManager {
         this.authScreen = Utils.dom.select('#authScreen');
         this.portalScreen = Utils.dom.select('#portalScreen');
         
-        // Form elements
-        this.managerSelect = Utils.dom.select('#managerSelect');
+        // Form elements - updated for text input
+        this.usernameInput = Utils.dom.select('#usernameInput');
         this.passwordInput = Utils.dom.select('#passwordInput');
         this.loginButton = Utils.dom.select('#loginButton');
         this.authForm = Utils.dom.select('#authForm');
@@ -28,7 +28,7 @@ class AuthManager {
             // Update loading status
             this.updateLoadingStatus('Loading authentication data...');
             
-            // Load authentication data
+            // Load authentication data from Excel/CSV URL
             await this.loadAuthData();
             
             // Check for existing session
@@ -50,13 +50,23 @@ class AuthManager {
     
     async loadAuthData() {
         try {
-            const csvData = await Utils.fetchCSV(Config.AUTH_DATA_PATH);
+            // Load from Excel/CSV URL if provided, otherwise fall back to local file
+            const authUrl = Config.AUTH_DATA_URL || Config.AUTH_DATA_PATH;
+            
+            Config.log('debug', `Loading auth data from: ${authUrl}`);
+            
+            let csvData;
+            if (authUrl.startsWith('http')) {
+                // Load from external URL (Excel/CSV download link)
+                csvData = await this.fetchExternalCSV(authUrl);
+            } else {
+                // Load from local file
+                csvData = await Utils.fetchCSV(authUrl);
+            }
+            
             this.authData = csvData;
             
             Config.log('debug', `Loaded ${this.authData.length} authentication records`);
-            
-            // Populate manager dropdown
-            this.populateManagerDropdown();
             
         } catch (error) {
             Config.log('error', 'Failed to load auth data:', error);
@@ -64,24 +74,25 @@ class AuthManager {
         }
     }
     
-    populateManagerDropdown() {
-        // Clear existing options except the default
-        const defaultOption = this.managerSelect.querySelector('option[value=""]');
-        this.managerSelect.innerHTML = '';
-        this.managerSelect.appendChild(defaultOption);
-        
-        // Add manager options
-        this.authData.forEach(user => {
-            if (user.role === 'manager' || user.role === 'admin') {
-                const option = Utils.dom.create('option', {
-                    value: user.manager,
-                    textContent: user.manager
-                });
-                this.managerSelect.appendChild(option);
+    async fetchExternalCSV(url) {
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'text/csv,text/plain,application/csv,*/*'
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
-        });
-        
-        Config.log('debug', `Added ${this.managerSelect.options.length - 1} managers to dropdown`);
+            
+            const csvText = await response.text();
+            return Utils.parseCSV(csvText);
+        } catch (error) {
+            Config.log('error', `Failed to fetch external CSV from ${url}:`, error);
+            throw error;
+        }
     }
     
     bindEvents() {
@@ -94,8 +105,8 @@ class AuthManager {
         }
         
         // Input validation
-        if (this.managerSelect) {
-            this.managerSelect.addEventListener('change', () => {
+        if (this.usernameInput) {
+            this.usernameInput.addEventListener('input', () => {
                 this.clearError();
                 this.validateForm();
             });
@@ -122,13 +133,13 @@ class AuthManager {
         }
         
         // Focus management
-        if (this.managerSelect) {
-            this.managerSelect.addEventListener('focus', () => {
-                this.managerSelect.parentElement.classList.add('focused');
+        if (this.usernameInput) {
+            this.usernameInput.addEventListener('focus', () => {
+                this.usernameInput.parentElement.classList.add('focused');
             });
             
-            this.managerSelect.addEventListener('blur', () => {
-                this.managerSelect.parentElement.classList.remove('focused');
+            this.usernameInput.addEventListener('blur', () => {
+                this.usernameInput.parentElement.classList.remove('focused');
             });
         }
         
@@ -148,10 +159,10 @@ class AuthManager {
             return;
         }
         
-        const manager = this.managerSelect.value.trim();
+        const username = this.usernameInput.value.trim();
         const password = this.passwordInput.value.trim();
         
-        if (!manager || !password) {
+        if (!username || !password) {
             this.showError('Please fill in all fields');
             return;
         }
@@ -162,7 +173,7 @@ class AuthManager {
             // Simulate network delay for better UX
             await Utils.delay(500);
             
-            const user = await this.authenticateUser(manager, password);
+            const user = await this.authenticateUser(username, password);
             
             if (user) {
                 this.currentUser = user;
@@ -192,11 +203,11 @@ class AuthManager {
         }
     }
     
-    async authenticateUser(manager, password) {
+    async authenticateUser(username, password) {
         return new Promise((resolve) => {
-            // Find user in auth data
+            // Find user in auth data - match by manager field (which contains the username)
             const user = this.authData.find(u => 
-                u.manager.toLowerCase() === manager.toLowerCase() && u.password === password
+                u.manager.toLowerCase() === username.toLowerCase() && u.password === password
             );
             
             if (user) {
@@ -227,9 +238,9 @@ class AuthManager {
     }
     
     validateForm() {
-        const manager = this.managerSelect?.value?.trim();
+        const username = this.usernameInput?.value?.trim();
         const password = this.passwordInput?.value?.trim();
-        const isValid = manager && password && password.length >= 1;
+        const isValid = username && password && password.length >= 1;
         
         if (this.loginButton) {
             this.loginButton.disabled = !isValid;
@@ -275,8 +286,8 @@ class AuthManager {
         
         // Focus the first empty field
         setTimeout(() => {
-            if (this.managerSelect && !this.managerSelect.value) {
-                this.managerSelect.focus();
+            if (this.usernameInput && !this.usernameInput.value) {
+                this.usernameInput.focus();
             } else if (this.passwordInput && !this.passwordInput.value) {
                 this.passwordInput.focus();
             }
