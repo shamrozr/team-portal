@@ -1,296 +1,399 @@
-// assets/js/config.js - Global configuration and constants
+// assets/js/utils.js - Utility functions and helpers
 
-window.Config = {
-    // Data file paths
-    AUTH_DATA_PATH: 'data/auth.csv',
-    DRIVE_DATA_PATH: 'data/drive.json',
-    
-    // Google Drive URLs
-    DRIVE_DOWNLOAD_BASE: 'https://drive.google.com/uc?export=download&id=',
-    DRIVE_PREVIEW_BASE: 'https://drive.google.com/uc?id=',
-    DRIVE_EMBED_BASE: 'https://drive.google.com/file/d/',
-    
-    // File type icons mapping
-    FILE_ICONS: {
-        // Folders
-        'folder': '📁',
+window.Utils = {
+    // DOM utilities
+    dom: {
+        select: (selector) => document.querySelector(selector),
+        selectAll: (selector) => document.querySelectorAll(selector),
         
-        // Images
-        'image/jpeg': '🖼️',
-        'image/jpg': '🖼️',
-        'image/png': '🖼️',
-        'image/gif': '🎞️',
-        'image/bmp': '🖼️',
-        'image/webp': '🖼️',
-        'image/svg+xml': '🖼️',
+        create: (tagName, attributes = {}) => {
+            const element = document.createElement(tagName);
+            Object.entries(attributes).forEach(([key, value]) => {
+                if (key === 'textContent' || key === 'innerHTML') {
+                    element[key] = value;
+                } else if (key === 'className') {
+                    element.className = value;
+                } else {
+                    element.setAttribute(key, value);
+                }
+            });
+            return element;
+        },
         
-        // Videos
-        'video/mp4': '🎬',
-        'video/avi': '🎬',
-        'video/mov': '🎬',
-        'video/wmv': '🎬',
-        'video/flv': '🎬',
-        'video/webm': '🎬',
-        'video/mkv': '🎬',
+        show: (element) => {
+            if (element) {
+                element.classList.remove('hidden');
+                element.style.display = '';
+            }
+        },
         
-        // Audio
-        'audio/mp3': '🎵',
-        'audio/wav': '🎵',
-        'audio/ogg': '🎵',
-        'audio/m4a': '🎵',
-        'audio/flac': '🎵',
+        hide: (element) => {
+            if (element) {
+                element.classList.add('hidden');
+            }
+        },
         
-        // Documents
-        'application/pdf': '📄',
-        'application/msword': '📝',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '📝',
-        'application/vnd.ms-excel': '📊',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '📊',
-        'application/vnd.ms-powerpoint': '📊',
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation': '📊',
+        addClass: (element, ...classes) => {
+            if (element) {
+                element.classList.add(...classes);
+            }
+        },
         
-        // Text files
-        'text/plain': '📃',
-        'text/html': '🌐',
-        'text/css': '🎨',
-        'text/javascript': '⚡',
-        'application/json': '⚙️',
-        'text/xml': '🔧',
+        removeClass: (element, ...classes) => {
+            if (element) {
+                element.classList.remove(...classes);
+            }
+        },
         
-        // Archives
-        'application/zip': '📦',
-        'application/x-rar-compressed': '📦',
-        'application/x-7z-compressed': '📦',
+        toggleClass: (element, className) => {
+            if (element) {
+                element.classList.toggle(className);
+            }
+        },
         
-        // Default
-        'default': '📄'
-    },
-    
-    // File extension to MIME type mapping (fallback)
-    EXTENSION_MIME_MAP: {
-        // Images
-        'jpg': 'image/jpeg',
-        'jpeg': 'image/jpeg',
-        'png': 'image/png',
-        'gif': 'image/gif',
-        'bmp': 'image/bmp',
-        'webp': 'image/webp',
-        'svg': 'image/svg+xml',
-        
-        // Videos
-        'mp4': 'video/mp4',
-        'avi': 'video/avi',
-        'mov': 'video/mov',
-        'wmv': 'video/wmv',
-        'flv': 'video/flv',
-        'webm': 'video/webm',
-        'mkv': 'video/mkv',
-        
-        // Audio
-        'mp3': 'audio/mp3',
-        'wav': 'audio/wav',
-        'ogg': 'audio/ogg',
-        'm4a': 'audio/m4a',
-        'flac': 'audio/flac',
-        
-        // Documents
-        'pdf': 'application/pdf',
-        'doc': 'application/msword',
-        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'xls': 'application/vnd.ms-excel',
-        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'ppt': 'application/vnd.ms-powerpoint',
-        'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        
-        // Text
-        'txt': 'text/plain',
-        'html': 'text/html',
-        'htm': 'text/html',
-        'css': 'text/css',
-        'js': 'text/javascript',
-        'json': 'application/json',
-        'xml': 'text/xml',
-        
-        // Archives
-        'zip': 'application/zip',
-        'rar': 'application/x-rar-compressed',
-        '7z': 'application/x-7z-compressed'
-    },
-    
-    // File types that can be previewed
-    PREVIEWABLE_TYPES: [
-        'image/jpeg',
-        'image/jpg', 
-        'image/png',
-        'image/gif',
-        'image/bmp',
-        'image/webp',
-        'application/pdf',
-        'text/plain',
-        'text/html',
-        'video/mp4',
-        'video/webm'
-    ],
-    
-    // Maximum file size for preview (in bytes)
-    MAX_PREVIEW_SIZE: 50 * 1024 * 1024, // 50MB
-    
-    // Download settings
-    DOWNLOAD_SETTINGS: {
-        MAX_CONCURRENT: 3,
-        RETRY_ATTEMPTS: 3,
-        RETRY_DELAY: 2000, // 2 seconds
-        DOWNLOAD_DELAY: 1000 // 1 second between downloads
-    },
-    
-    // UI settings
-    UI_SETTINGS: {
-        ANIMATION_DURATION: 300,
-        TOAST_DURATION: 5000,
-        BREADCRUMB_MAX_ITEMS: 5,
-        FILES_PER_PAGE: 100,
-        SEARCH_DEBOUNCE: 300
-    },
-    
-    // Cache settings
-    CACHE_SETTINGS: {
-        AUTH_DATA_TTL: 5 * 60 * 1000, // 5 minutes
-        DRIVE_DATA_TTL: 10 * 60 * 1000, // 10 minutes
-        FILE_INFO_TTL: 30 * 60 * 1000 // 30 minutes
-    },
-    
-    // Error messages
-    ERROR_MESSAGES: {
-        AUTH_FAILED: 'Invalid credentials. Please check your manager selection and password.',
-        AUTH_REQUIRED: 'Please log in to access the portal.',
-        NETWORK_ERROR: 'Network error. Please check your connection and try again.',
-        FILE_NOT_FOUND: 'File not found or access denied.',
-        DOWNLOAD_FAILED: 'Download failed. Please try again.',
-        PREVIEW_FAILED: 'Preview not available for this file type.',
-        DATA_LOAD_FAILED: 'Failed to load data. Please refresh the page.',
-        INVALID_FILE_TYPE: 'File type not supported.',
-        FILE_TOO_LARGE: 'File is too large for preview.',
-        GENERIC_ERROR: 'An unexpected error occurred. Please try again.'
-    },
-    
-    // Success messages
-    SUCCESS_MESSAGES: {
-        LOGIN_SUCCESS: 'Successfully logged in to Team Portal.',
-        LOGOUT_SUCCESS: 'Successfully logged out.',
-        DOWNLOAD_START: 'Download started.',
-        DOWNLOAD_COMPLETE: 'All downloads completed successfully.',
-        FILE_SELECTED: 'File selected for download.',
-        FILES_SELECTED: 'files selected for download.'
-    },
-    
-    // Keyboard shortcuts
-    KEYBOARD_SHORTCUTS: {
-        ESCAPE: 'Escape',
-        ENTER: 'Enter',
-        SPACE: ' ',
-        ARROW_LEFT: 'ArrowLeft',
-        ARROW_RIGHT: 'ArrowRight',
-        ARROW_UP: 'ArrowUp',
-        ARROW_DOWN: 'ArrowDown',
-        CTRL_A: 'KeyA',
-        CTRL_D: 'KeyD'
-    },
-    
-    // Local storage keys
-    STORAGE_KEYS: {
-        AUTH_TOKEN: 'teamPortal_authToken',
-        USER_PREFERENCES: 'teamPortal_userPrefs',
-        LAST_PATH: 'teamPortal_lastPath',
-        VIEW_MODE: 'teamPortal_viewMode'
-    },
-    
-    // Development settings
-    DEBUG: false, // Set to true for development
-    LOG_LEVEL: 'warn', // 'debug', 'info', 'warn', 'error'
-    
-    // Helper functions
-    getFileIcon(mimeType, fileName) {
-        if (!mimeType && fileName) {
-            const extension = fileName.split('.').pop()?.toLowerCase();
-            mimeType = this.EXTENSION_MIME_MAP[extension] || 'application/octet-stream';
-        }
-        
-        return this.FILE_ICONS[mimeType] || this.FILE_ICONS.default;
-    },
-    
-    isPreviewable(mimeType, fileSize = 0) {
-        if (fileSize > this.MAX_PREVIEW_SIZE) return false;
-        return this.PREVIEWABLE_TYPES.includes(mimeType);
-    },
-    
-    formatFileSize(bytes) {
-        if (!bytes || bytes === 0) return '0 B';
-        
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    },
-    
-    formatDate(dateString) {
-        if (!dateString) return '';
-        
-        const date = new Date(dateString);
-        if (isNaN(date.getTime())) return '';
-        
-        const now = new Date();
-        const diffTime = Math.abs(now - date);
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
-        if (diffDays === 1) {
-            return 'Yesterday';
-        } else if (diffDays < 7) {
-            return `${diffDays} days ago`;
-        } else if (diffDays < 30) {
-            const weeks = Math.floor(diffDays / 7);
-            return `${weeks} week${weeks > 1 ? 's' : ''} ago`;
-        } else {
-            return date.toLocaleDateString();
+        hasClass: (element, className) => {
+            return element ? element.classList.contains(className) : false;
         }
     },
     
-    getDriveDownloadURL(fileId) {
-        return this.DRIVE_DOWNLOAD_BASE + fileId;
-    },
-    
-    getDrivePreviewURL(fileId) {
-        return this.DRIVE_PREVIEW_BASE + fileId;
-    },
-    
-    getDriveEmbedURL(fileId) {
-        return `${this.DRIVE_EMBED_BASE}${fileId}/preview`;
-    },
-    
-    log(level, message, data = null) {
-        if (!this.DEBUG) return;
+    // Storage utilities (localStorage wrapper)
+    storage: {
+        set: (key, value, ttl = null) => {
+            try {
+                const item = {
+                    value: value,
+                    timestamp: Date.now(),
+                    ttl: ttl
+                };
+                localStorage.setItem(key, JSON.stringify(item));
+                return true;
+            } catch (error) {
+                Config.log('error', 'Storage set failed:', error);
+                return false;
+            }
+        },
         
-        const levels = ['debug', 'info', 'warn', 'error'];
-        const currentLevelIndex = levels.indexOf(this.LOG_LEVEL);
-        const messageLevelIndex = levels.indexOf(level);
+        get: (key) => {
+            try {
+                const item = localStorage.getItem(key);
+                if (!item) return null;
+                
+                const parsed = JSON.parse(item);
+                
+                // Check if item has expired
+                if (parsed.ttl && Date.now() - parsed.timestamp > parsed.ttl) {
+                    localStorage.removeItem(key);
+                    return null;
+                }
+                
+                return parsed.value;
+            } catch (error) {
+                Config.log('error', 'Storage get failed:', error);
+                return null;
+            }
+        },
         
-        if (messageLevelIndex >= currentLevelIndex) {
-            const timestamp = new Date().toISOString();
-            const logMessage = `[${timestamp}] [${level.toUpperCase()}] ${message}`;
-            
-            if (data) {
-                console[level](logMessage, data);
-            } else {
-                console[level](logMessage);
+        remove: (key) => {
+            try {
+                localStorage.removeItem(key);
+                return true;
+            } catch (error) {
+                Config.log('error', 'Storage remove failed:', error);
+                return false;
+            }
+        },
+        
+        clear: () => {
+            try {
+                localStorage.clear();
+                return true;
+            } catch (error) {
+                Config.log('error', 'Storage clear failed:', error);
+                return false;
             }
         }
+    },
+    
+    // Network utilities
+    async fetchJSON(url) {
+        try {
+            Config.log('debug', `Fetching JSON from: ${url}`);
+            const response = await fetch(url);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            Config.log('debug', `Successfully loaded JSON from: ${url}`);
+            return data;
+        } catch (error) {
+            Config.log('error', `Failed to fetch JSON from ${url}:`, error);
+            throw new Error(`Failed to load data from ${url}`);
+        }
+    },
+    
+    async fetchCSV(url) {
+        try {
+            Config.log('debug', `Fetching CSV from: ${url}`);
+            const response = await fetch(url);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const csvText = await response.text();
+            const data = this.parseCSV(csvText);
+            Config.log('debug', `Successfully loaded CSV from: ${url} (${data.length} rows)`);
+            return data;
+        } catch (error) {
+            Config.log('error', `Failed to fetch CSV from ${url}:`, error);
+            throw new Error(`Failed to load CSV data from ${url}`);
+        }
+    },
+    
+    parseCSV(csvText) {
+        const lines = csvText.trim().split('\n');
+        if (lines.length === 0) return [];
+        
+        const headers = lines[0].split(',').map(header => header.trim().toLowerCase());
+        const rows = [];
+        
+        for (let i = 1; i < lines.length; i++) {
+            const values = lines[i].split(',').map(value => value.trim());
+            if (values.length === headers.length) {
+                const row = {};
+                headers.forEach((header, index) => {
+                    row[header] = values[index];
+                });
+                rows.push(row);
+            }
+        }
+        
+        return rows;
+    },
+    
+    // Utility functions
+    delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    },
+    
+    sanitizeHTML(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    },
+    
+    getMimeType(filename) {
+        if (!filename) return 'application/octet-stream';
+        
+        const extension = filename.split('.').pop()?.toLowerCase();
+        return Config.EXTENSION_MIME_MAP[extension] || 'application/octet-stream';
+    },
+    
+    getFileExtension(filename) {
+        if (!filename) return '';
+        return filename.split('.').pop()?.toLowerCase() || '';
+    },
+    
+    debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    },
+    
+    throttle(func, limit) {
+        let inThrottle;
+        return function() {
+            const args = arguments;
+            const context = this;
+            if (!inThrottle) {
+                func.apply(context, args);
+                inThrottle = true;
+                setTimeout(() => inThrottle = false, limit);
+            }
+        };
+    },
+    
+    // Toast notification system
+    showToast(message, type = 'info', duration = Config.UI_SETTINGS.TOAST_DURATION) {
+        const toast = this.dom.create('div', {
+            className: `toast toast-${type}`,
+            textContent: message
+        });
+        
+        // Add toast styles if not already present
+        this.ensureToastStyles();
+        
+        document.body.appendChild(toast);
+        
+        // Show toast with animation
+        requestAnimationFrame(() => {
+            toast.classList.add('toast-show');
+        });
+        
+        // Auto remove toast
+        setTimeout(() => {
+            toast.classList.remove('toast-show');
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 300);
+        }, duration);
+        
+        return toast;
+    },
+    
+    showSuccess(message, duration) {
+        return this.showToast(message, 'success', duration);
+    },
+    
+    showError(message, duration) {
+        return this.showToast(message, 'error', duration);
+    },
+    
+    showWarning(message, duration) {
+        return this.showToast(message, 'warning', duration);
+    },
+    
+    showInfo(message, duration) {
+        return this.showToast(message, 'info', duration);
+    },
+    
+    ensureToastStyles() {
+        if (document.querySelector('#toast-styles')) return;
+        
+        const style = this.dom.create('style', {
+            id: 'toast-styles',
+            textContent: `
+                .toast {
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    padding: 12px 24px;
+                    border-radius: 8px;
+                    color: white;
+                    font-weight: 500;
+                    font-size: 14px;
+                    max-width: 400px;
+                    z-index: 10000;
+                    transform: translateX(100%);
+                    transition: transform 0.3s ease-in-out;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                }
+                
+                .toast-show {
+                    transform: translateX(0);
+                }
+                
+                .toast-success { background-color: #059669; }
+                .toast-error { background-color: #dc2626; }
+                .toast-warning { background-color: #d97706; }
+                .toast-info { background-color: #2563eb; }
+                
+                @media (max-width: 480px) {
+                    .toast {
+                        left: 20px;
+                        right: 20px;
+                        max-width: none;
+                        transform: translateY(-100%);
+                    }
+                    
+                    .toast-show {
+                        transform: translateY(0);
+                    }
+                }
+            `
+        });
+        
+        document.head.appendChild(style);
+    },
+    
+    // Form validation utilities
+    validateEmail(email) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return emailRegex.test(email);
+    },
+    
+    validateRequired(value) {
+        return value && value.toString().trim().length > 0;
+    },
+    
+    validateMinLength(value, minLength) {
+        return value && value.toString().length >= minLength;
+    },
+    
+    // URL utilities
+    getURLParams() {
+        const params = new URLSearchParams(window.location.search);
+        const result = {};
+        for (const [key, value] of params) {
+            result[key] = value;
+        }
+        return result;
+    },
+    
+    setURLParam(key, value) {
+        const url = new URL(window.location);
+        url.searchParams.set(key, value);
+        window.history.replaceState({}, '', url);
+    },
+    
+    removeURLParam(key) {
+        const url = new URL(window.location);
+        url.searchParams.delete(key);
+        window.history.replaceState({}, '', url);
+    },
+    
+    // Device detection
+    isMobile() {
+        return window.innerWidth <= 768;
+    },
+    
+    isTablet() {
+        return window.innerWidth > 768 && window.innerWidth <= 1024;
+    },
+    
+    isDesktop() {
+        return window.innerWidth > 1024;
+    },
+    
+    // Performance utilities
+    measurePerformance(name, fn) {
+        const startTime = performance.now();
+        const result = fn();
+        const endTime = performance.now();
+        Config.log('debug', `Performance [${name}]: ${(endTime - startTime).toFixed(2)}ms`);
+        return result;
+    },
+    
+    // Error handling
+    handleError(error, context = 'Unknown') {
+        Config.log('error', `Error in ${context}:`, error);
+        
+        let message = Config.ERROR_MESSAGES.GENERIC_ERROR;
+        
+        if (error.name === 'NetworkError' || error.message.includes('fetch')) {
+            message = Config.ERROR_MESSAGES.NETWORK_ERROR;
+        } else if (error.message.includes('404')) {
+            message = Config.ERROR_MESSAGES.FILE_NOT_FOUND;
+        }
+        
+        this.showError(message);
     }
 };
 
-// Freeze the configuration to prevent modifications
-Object.freeze(window.Config);
+// Freeze the Utils object to prevent modifications
+Object.freeze(window.Utils);
 
-// Export for modules (if using ES6 modules)
+// Export for modules
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = window.Config;
+    module.exports = window.Utils;
 }
