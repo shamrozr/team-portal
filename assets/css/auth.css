@@ -1,0 +1,276 @@
+/* assets/css/auth.css - Authentication screen styles */
+
+.auth-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: fadeIn 0.5s ease-in-out;
+}
+
+.auth-container {
+    background: var(--white);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-xl);
+    padding: var(--spacing-2xl);
+    width: 100%;
+    max-width: 400px;
+    margin: var(--spacing-md);
+    animation: slideUp 0.6s ease-out;
+}
+
+.auth-header {
+    text-align: center;
+    margin-bottom: var(--spacing-2xl);
+}
+
+.auth-header h1 {
+    color: var(--gray-900);
+    margin-bottom: var(--spacing-sm);
+    font-size: 1.875rem;
+    font-weight: 700;
+}
+
+.auth-header p {
+    color: var(--gray-600);
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.form-group label {
+    font-weight: 500;
+    color: var(--gray-700);
+    font-size: 0.875rem;
+}
+
+.form-group select,
+.form-group input {
+    padding: var(--spacing-md);
+    border: 2px solid var(--gray-200);
+    border-radius: var(--radius-md);
+    font-size: 1rem;
+    transition: all var(--transition-fast);
+    background-color: var(--white);
+}
+
+.form-group select:focus,
+.form-group input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.form-group select:hover,
+.form-group input:hover {
+    border-color: var(--gray-300);
+}
+
+.form-group select {
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right var(--spacing-sm) center;
+    background-repeat: no-repeat;
+    background-size: 1.5em 1.5em;
+    padding-right: 2.5rem;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+}
+
+.form-group input::placeholder {
+    color: var(--gray-400);
+}
+
+#loginButton {
+    margin-top: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-xl);
+    font-size: 1rem;
+    font-weight: 600;
+    position: relative;
+    overflow: hidden;
+}
+
+#loginButton span {
+    transition: opacity var(--transition-fast);
+}
+
+#loginButton.loading span {
+    opacity: 0;
+}
+
+#loginButton.loading .button-spinner {
+    display: block;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.auth-error {
+    background-color: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #dc2626;
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    text-align: center;
+    animation: shake 0.5s ease-in-out;
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+}
+
+/* Form validation states */
+.form-group.error select,
+.form-group.error input {
+    border-color: var(--danger-color);
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+}
+
+.form-group.success select,
+.form-group.success input {
+    border-color: var(--success-color);
+    box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
+}
+
+/* Loading states */
+.auth-form.loading {
+    pointer-events: none;
+    opacity: 0.7;
+}
+
+.auth-form.loading select,
+.auth-form.loading input {
+    background-color: var(--gray-50);
+}
+
+/* Success state animation */
+.auth-container.success {
+    animation: successPulse 0.6s ease-in-out;
+}
+
+@keyframes successPulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); box-shadow: 0 0 20px rgba(5, 150, 105, 0.3); }
+    100% { transform: scale(1); }
+}
+
+/* Responsive design for mobile */
+@media (max-width: 768px) {
+    .auth-container {
+        padding: var(--spacing-xl);
+        margin: var(--spacing-sm);
+        max-width: 350px;
+    }
+    
+    .auth-header h1 {
+        font-size: 1.5rem;
+    }
+    
+    .form-group select,
+    .form-group input {
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+    
+    #loginButton {
+        padding: var(--spacing-sm) var(--spacing-lg);
+    }
+}
+
+@media (max-width: 480px) {
+    .auth-container {
+        padding: var(--spacing-lg);
+        margin: var(--spacing-xs);
+        max-width: 320px;
+    }
+    
+    .auth-header {
+        margin-bottom: var(--spacing-lg);
+    }
+    
+    .auth-header h1 {
+        font-size: 1.375rem;
+    }
+    
+    .auth-form {
+        gap: var(--spacing-md);
+    }
+}
+
+/* Enhanced visual feedback */
+.form-group {
+    position: relative;
+}
+
+.form-group::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--primary-color), var(--info-color));
+    border-radius: var(--radius-sm);
+    transform: scaleX(0);
+    transition: transform var(--transition-fast);
+}
+
+.form-group.focused::after {
+    transform: scaleX(1);
+}
+
+/* Dark mode support (if needed) */
+@media (prefers-color-scheme: dark) {
+    .auth-screen {
+        background: linear-gradient(135deg, #1e3a8a 0%, #581c87 100%);
+    }
+    
+    .auth-container {
+        background: var(--gray-800);
+        color: var(--white);
+    }
+    
+    .auth-header h1 {
+        color: var(--white);
+    }
+    
+    .auth-header p {
+        color: var(--gray-300);
+    }
+    
+    .form-group label {
+        color: var(--gray-200);
+    }
+    
+    .form-group select,
+    .form-group input {
+        background-color: var(--gray-700);
+        border-color: var(--gray-600);
+        color: var(--white);
+    }
+    
+    .form-group input::placeholder {
+        color: var(--gray-400);
+    }
+}

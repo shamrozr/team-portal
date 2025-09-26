@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Team Portal - File Management</title>
+    
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="assets/css/main.css">
+    <link rel="stylesheet" href="assets/css/auth.css">
+    <link rel="stylesheet" href="assets/css/portal.css">
+    
+    <!-- Preload critical resources -->
+    <link rel="preload" href="data/auth.csv" as="fetch" crossorigin="anonymous">
+    <link rel="preload" href="data/drive.json" as="fetch" crossorigin="anonymous">
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="loading-screen">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <h2>Loading Team Portal</h2>
+            <p id="loadingStatus">Initializing...</p>
+        </div>
+    </div>
+
+    <!-- Authentication Screen -->
+    <div id="authScreen" class="auth-screen hidden">
+        <div class="auth-container">
+            <div class="auth-header">
+                <h1>Team Portal Access</h1>
+                <p>Select your manager and enter your password to access team files</p>
+            </div>
+            
+            <form id="authForm" class="auth-form">
+                <div class="form-group">
+                    <label for="managerSelect">Team Manager:</label>
+                    <select id="managerSelect" required>
+                        <option value="">Select your manager...</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="passwordInput">Password:</label>
+                    <input type="password" id="passwordInput" required 
+                           placeholder="Enter your password">
+                </div>
+                
+                <button type="submit" id="loginButton">
+                    <span>Access Portal</span>
+                    <div class="button-spinner hidden"></div>
+                </button>
+                
+                <div id="authError" class="auth-error hidden"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Portal -->
+    <div id="portalScreen" class="portal-screen hidden">
+        <!-- Header -->
+        <header class="portal-header">
+            <div class="header-content">
+                <div class="header-left">
+                    <h1>Team Portal</h1>
+                    <span id="userInfo" class="user-info"></span>
+                </div>
+                
+                <div class="header-right">
+                    <div id="selectedCount" class="selected-count hidden">
+                        <span id="selectedNumber">0</span> files selected
+                    </div>
+                    <button id="downloadSelected" class="btn btn-primary hidden">
+                        Download Selected
+                    </button>
+                    <button id="logoutButton" class="btn btn-secondary">
+                        Logout
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation Breadcrumb -->
+        <nav class="breadcrumb-nav">
+            <div class="breadcrumb-container">
+                <div id="breadcrumb" class="breadcrumb">
+                    <span class="breadcrumb-item active" data-path="/">
+                        <span class="breadcrumb-icon">🏠</span>
+                        Home
+                    </span>
+                </div>
+                
+                <div class="nav-actions">
+                    <button id="backButton" class="nav-btn" title="Go Back" disabled>
+                        ← Back
+                    </button>
+                    <button id="forwardButton" class="nav-btn" title="Go Forward" disabled>
+                        Forward →
+                    </button>
+                </div>
+            </div>
+        </nav>
+
+        <!-- File Browser -->
+        <main class="file-browser">
+            <!-- Folder Actions -->
+            <div id="folderActions" class="folder-actions">
+                <div class="actions-left">
+                    <button id="selectAllButton" class="btn btn-outline">
+                        Select All
+                    </button>
+                    <button id="deselectAllButton" class="btn btn-outline hidden">
+                        Deselect All
+                    </button>
+                </div>
+                
+                <div class="actions-right">
+                    <div class="view-options">
+                        <button id="gridViewButton" class="view-btn active" title="Grid View">
+                            ⊞
+                        </button>
+                        <button id="listViewButton" class="view-btn" title="List View">
+                            ☰
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- File Grid -->
+            <div id="fileGrid" class="file-grid">
+                <!-- Files will be dynamically loaded here -->
+            </div>
+
+            <!-- Empty State -->
+            <div id="emptyState" class="empty-state hidden">
+                <div class="empty-icon">📁</div>
+                <h3>This folder is empty</h3>
+                <p>No files or folders to display</p>
+            </div>
+        </main>
+    </div>
+
+    <!-- File Preview Modal -->
+    <div id="previewModal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="previewTitle">File Preview</h3>
+                <button id="closePreview" class="modal-close">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div id="previewContent" class="preview-content">
+                    <!-- Preview content will be loaded here -->
+                </div>
+                
+                <div class="preview-nav">
+                    <button id="prevFile" class="preview-nav-btn">
+                        ← Previous
+                    </button>
+                    <button id="nextFile" class="preview-nav-btn">
+                        Next →
+                    </button>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button id="downloadCurrent" class="btn btn-primary">
+                    Download File
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Download Progress Modal -->
+    <div id="downloadModal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Download Progress</h3>
+            </div>
+            
+            <div class="modal-body">
+                <div id="downloadQueue" class="download-queue">
+                    <!-- Download items will be added here -->
+                </div>
+                
+                <div class="download-summary">
+                    <div class="download-stats">
+                        <span id="downloadProgress">0 of 0 files</span>
+                        <span id="downloadStatus">Preparing...</span>
+                    </div>
+                    
+                    <div class="download-actions">
+                        <button id="cancelDownloads" class="btn btn-secondary">
+                            Cancel All
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden iframe for downloads -->
+    <iframe id="downloadFrame" style="display: none;"></iframe>
+
+    <!-- JavaScript -->
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/fileManager.js"></script>
+    <script src="assets/js/downloadManager.js"></script>
+    <script src="assets/js/previewManager.js"></script>
+    
+    <script>
+        // Initialize the application when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 Team Portal loading...');
+            
+            // Initialize all managers
+            window.App = {
+                auth: new AuthManager(),
+                fileManager: new FileManager(),
+                downloadManager: new DownloadManager(),
+                previewManager: new PreviewManager()
+            };
+            
+            // Start the application
+            window.App.auth.init();
+        });
+
+        // Global error handler
+        window.addEventListener('error', function(event) {
+            console.error('Global error:', event.error);
+            Utils.showError('An unexpected error occurred. Please refresh the page.');
+        });
+
+        // Handle unhandled promise rejections
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('Unhandled promise rejection:', event.reason);
+            Utils.showError('An error occurred while processing your request.');
+        });
+    </script>
+</body>
+</html>
