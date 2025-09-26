@@ -141,8 +141,10 @@
         </main>
     </div>
 
-    <!-- Hidden iframe for downloads -->
+    <!-- Hidden iframe for downloads (kept for desktop compatibility) -->
     <iframe id="downloadFrame" style="display: none;"></iframe>
+
+    <!-- Download Modal will be created dynamically by DownloadManager -->
 
     <!-- JavaScript - IMPORTANT: Load in correct order -->
     <script src="assets/js/config.js"></script>
@@ -178,7 +180,7 @@
                 window.App = {
                     auth: new AuthManager(),
                     fileManager: new FileManager(),
-                    downloadManager: new DownloadManager(),
+                    downloadManager: new DownloadManager(), // ← Uses the individual download approach
                     previewManager: new PreviewManager()
                 };
                 
