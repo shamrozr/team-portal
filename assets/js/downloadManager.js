@@ -1,4 +1,4 @@
-// assets/js/downloadManager.js - Your original code + individual file download buttons
+// assets/js/downloadManager.js - Mobile-optimized download manager
 
 class DownloadManager {
     constructor() {
@@ -12,16 +12,15 @@ class DownloadManager {
         this.createDownloadWidget();
         this.createDownloadFrame();
         this.bindEvents();
-        this.addFileDownloadButtonStyles(); // NEW: Add styles for individual file buttons
     }
     
     detectMobile() {
-        const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        const isMobileScreen = window.innerWidth <= 768;
-        const isTouchDevice = 'ontouchstart' in window;
-        
-        return isMobileUA || (isMobileScreen && isTouchDevice);
-    }
+    const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const isMobileScreen = window.innerWidth <= 768;
+    const isTouchDevice = 'ontouchstart' in window;
+    
+    return isMobileUA || (isMobileScreen && isTouchDevice);
+}
     
     createDownloadWidget() {
         // Remove existing widget
@@ -344,78 +343,6 @@ class DownloadManager {
         document.head.appendChild(style);
     }
     
-    // NEW: Add styles for individual file download buttons
-    addFileDownloadButtonStyles() {
-        if (document.getElementById('fileDownloadStyles')) return;
-        
-        const style = document.createElement('style');
-        style.id = 'fileDownloadStyles';
-        style.textContent = `
-            .file-download-btn {
-                position: absolute;
-                top: 8px;
-                right: 8px;
-                width: 32px;
-                height: 32px;
-                background: rgba(59, 130, 246, 0.9);
-                color: white;
-                border: none;
-                border-radius: 50%;
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 14px;
-                transition: all 0.2s ease;
-                opacity: 0;
-                transform: scale(0.8);
-                z-index: 10;
-            }
-            
-            .file-item:hover .file-download-btn {
-                opacity: 1;
-                transform: scale(1);
-            }
-            
-            .file-download-btn:hover {
-                background: rgba(29, 78, 216, 0.9);
-                transform: scale(1.1);
-            }
-            
-            .file-download-btn:active {
-                transform: scale(0.95);
-            }
-            
-            /* Mobile: Always show download buttons */
-            @media (max-width: 768px) {
-                .file-download-btn {
-                    opacity: 1;
-                    transform: scale(1);
-                    position: absolute;
-                    top: 6px;
-                    right: 6px;
-                    width: 28px;
-                    height: 28px;
-                    font-size: 12px;
-                }
-                
-                .file-item.list-view .file-download-btn {
-                    position: relative;
-                    top: auto;
-                    right: auto;
-                    margin-left: 8px;
-                }
-            }
-            
-            /* Ensure file items have relative positioning */
-            .file-item {
-                position: relative;
-            }
-        `;
-        
-        document.head.appendChild(style);
-    }
-    
     bindEvents() {
         const widget = document.getElementById('downloadWidget');
         const toggle = document.getElementById('downloadToggle');
@@ -452,61 +379,6 @@ class DownloadManager {
             this.downloadFrame.id = 'downloadFrame';
             this.downloadFrame.style.cssText = 'display: none; width: 0; height: 0; border: none;';
             document.body.appendChild(this.downloadFrame);
-        }
-    }
-    
-    // NEW: Add download button to individual files (called by file manager)
-    addDownloadButtonToFile(fileElement, file) {
-        // Don't add button to folders
-        if (file.type === 'folder') return;
-        
-        // Check if button already exists
-        if (fileElement.querySelector('.file-download-btn')) return;
-        
-        const downloadBtn = document.createElement('button');
-        downloadBtn.className = 'file-download-btn';
-        downloadBtn.innerHTML = '📥';
-        downloadBtn.title = `Download ${file.name}`;
-        downloadBtn.onclick = (e) => {
-            e.stopPropagation();
-            this.downloadSingleFileDirectly(file.id, file.name);
-        };
-        
-        // Add to file element
-        const fileContent = fileElement.querySelector('.file-content');
-        if (fileContent) {
-            fileContent.appendChild(downloadBtn);
-        }
-    }
-    
-    // NEW: Direct download for individual file buttons (bypasses queue)
-    downloadSingleFileDirectly(fileId, fileName) {
-        console.log(`Direct download for: ${fileName}`);
-        
-        const downloadUrl = this.isMobile ? 
-            `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t` :
-            `https://drive.google.com/uc?export=download&id=${fileId}`;
-        
-        try {
-            if (this.isMobile) {
-                // Force download on mobile
-                const link = document.createElement('a');
-                link.href = downloadUrl;
-                link.download = fileName;
-                link.style.display = 'none';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-            } else {
-                // Use iframe for desktop
-                this.downloadFrame.src = downloadUrl;
-            }
-            
-            this.showToast(`Download started: ${fileName}`, 'success');
-            
-        } catch (error) {
-            console.error(`Download failed for ${fileName}:`, error);
-            this.showToast(`Download failed: ${fileName}`, 'error');
         }
     }
     
@@ -593,6 +465,7 @@ class DownloadManager {
                 `https://drive.google.com/uc?export=download&id=${item.id}&confirm=t` :
                 `https://drive.google.com/uc?export=download&id=${item.id}`;
             
+            // And for mobile, add this right after:
             if (this.isMobile) {
                 // Force download on mobile
                 const link = document.createElement('a');
@@ -639,21 +512,21 @@ class DownloadManager {
     }
     
     downloadWithDirectLink(url, filename) {
-        return new Promise((resolve) => {
-            // Create a hidden iframe for seamless downloads
-            const downloadIframe = document.createElement('iframe');
-            downloadIframe.style.cssText = 'display: none; width: 0; height: 0;';
-            downloadIframe.src = url;
-            
-            document.body.appendChild(downloadIframe);
-            
-            // Clean up after download starts
-            setTimeout(() => {
-                document.body.removeChild(downloadIframe);
-                resolve();
-            }, 2000);
-        });
-    }
+    return new Promise((resolve) => {
+        // Create a hidden iframe for seamless downloads
+        const downloadIframe = document.createElement('iframe');
+        downloadIframe.style.cssText = 'display: none; width: 0; height: 0;';
+        downloadIframe.src = url;
+        
+        document.body.appendChild(downloadIframe);
+        
+        // Clean up after download starts
+        setTimeout(() => {
+            document.body.removeChild(downloadIframe);
+            resolve();
+        }, 2000);
+    });
+}
     
     downloadWithIframe(url, filename) {
         return new Promise((resolve, reject) => {
