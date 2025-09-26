@@ -5,6 +5,7 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+  workflow_dispatch: # This adds a manual "Run workflow" button
 
 jobs:
   deploy:
@@ -18,10 +19,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Skip dependencies (none needed)
+        run: echo "No dependencies to install"
 
       - name: Build project
         run: npm run build
@@ -33,6 +33,5 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           projectName: team-portal # Change this to your Cloudflare Pages project name
           directory: ./ # Build output directory
-          # Optional: Git configurations (defaults are usually fine)
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
           wranglerVersion: '3'
