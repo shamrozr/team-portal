@@ -461,8 +461,8 @@ class DownloadManager {
         const downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
         
         try {
-            // Always use window.open for individual downloads (works on both mobile and desktop)
-            window.open(downloadUrl, '_blank');
+            // Use iframe method for same-page downloads
+            this.downloadFrame.src = downloadUrl;
             
             // Mark as downloaded
             this.markFileAsDownloaded(fileId);
