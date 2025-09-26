@@ -7,7 +7,8 @@ window.Config = {
     
     // External data URLs (set these to use external Excel/CSV files)
     AUTH_DATA_URL: null //'https://docs.google.com/spreadsheets/d/1lPEpNadiqbL9Q2hDf1Oo09SlQR1sKUbDjyJsI4SEhQM/export?format=csv&gid=0',
-    
+    DEBUG: true, // Enable debug mode
+    LOG_LEVEL: 'debug', // Show all log messages
     // Google Drive URLs
     DRIVE_DOWNLOAD_BASE: 'https://drive.google.com/uc?export=download&id=',
     DRIVE_PREVIEW_BASE: 'https://drive.google.com/uc?id=',
