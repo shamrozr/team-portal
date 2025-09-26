@@ -384,30 +384,56 @@ class PreviewManager {
     }
     
     async loadImagePreview(file, container) {
-        const imageUrl = `https://drive.google.com/uc?id=${file.id}`;
+    // Try multiple image URL formats for better mobile compatibility
+    const imageUrls = [
+        `https://lh3.googleusercontent.com/d/${file.id}`,
+        `https://drive.google.com/uc?export=view&id=${file.id}`,
+        `https://drive.google.com/uc?id=${file.id}`
+    ];
+    
+    let imageLoaded = false;
+    
+    for (const imageUrl of imageUrls) {
+        if (imageLoaded) break;
         
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            img.onload = () => {
-                container.innerHTML = `<img src="${imageUrl}" class="preview-image" alt="${file.name}">`;
-                resolve();
-            };
-            img.onerror = () => {
-                // Fallback to iframe if direct image fails
-                container.innerHTML = `<iframe src="https://drive.google.com/file/d/${file.id}/preview" class="preview-iframe"></iframe>`;
-                resolve();
-            };
-            img.src = imageUrl;
-        });
+        try {
+            await new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                    container.innerHTML = `<img src="${imageUrl}" class="preview-image" alt="${file.name}">`;
+                    imageLoaded = true;
+                    resolve();
+                };
+                img.onerror = reject;
+                img.src = imageUrl;
+                
+                // Timeout after 3 seconds
+                setTimeout(reject, 3000);
+            });
+        } catch (error) {
+            continue; // Try next URL
+        }
     }
+    
+    // If no image URL worked, fallback to iframe
+    if (!imageLoaded) {
+        container.innerHTML = `<iframe src="https://drive.google.com/file/d/${file.id}/preview" class="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>`;
+    }
+}
     
     loadVideoPreview(file, container) {
-        container.innerHTML = `<iframe src="https://drive.google.com/file/d/${file.id}/preview" class="preview-iframe" allow="autoplay; encrypted-media"></iframe>`;
-    }
-    
-    loadPDFPreview(file, container) {
-        container.innerHTML = `<iframe src="https://drive.google.com/file/d/${file.id}/preview" class="preview-iframe"></iframe>`;
-    }
+    container.innerHTML = `<iframe src="https://drive.google.com/file/d/${file.id}/preview" class="preview-iframe" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-popups"></iframe>`;
+}
+
+loadPDFPreview(file, container) {
+    // Use different URL for mobile
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const previewUrl = isMobile ? 
+        `https://drive.google.com/file/d/${file.id}/view` :
+        `https://drive.google.com/file/d/${file.id}/preview`;
+        
+    container.innerHTML = `<iframe src="${previewUrl}" class="preview-iframe" sandbox="allow-scripts allow-same-origin allow-popups"></iframe>`;
+}
     
     loadDocumentPreview(file, container) {
         container.innerHTML = `<iframe src="https://docs.google.com/viewer?url=https://drive.google.com/uc?id=${file.id}&embedded=true" class="preview-iframe"></iframe>`;
