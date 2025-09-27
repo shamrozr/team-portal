@@ -689,6 +689,43 @@ class DownloadManager {
         }
     }
     
+    updateDownloadList() {
+        const listElement = document.getElementById('downloadList');
+        if (!listElement) return;
+        
+        listElement.innerHTML = '';
+        
+        this.downloadQueueData.forEach(item => {
+            const itemElement = document.createElement('div');
+            itemElement.className = `download-item ${item.status}`;
+            
+            let icon = '⏳';
+            if (item.status === 'completed') icon = '✅';
+            else if (item.status === 'failed') icon = '❌';
+            else if (item.status === 'current') icon = '⬇️';
+            else if (item.status === 'downloading') icon = '📥';
+            
+            // Add download button for videos in waiting or failed state
+            const downloadButton = item.isVideo && (item.status === 'waiting' || item.status === 'failed') ? 
+                `<button class="video-download-btn" onclick="window.App.downloadManager.downloadVideoFromQueue(window.App.downloadManager.downloadQueueData[${item.index}])">
+                    📥 Download
+                </button>` : '';
+            
+            itemElement.innerHTML = `
+                <div class="download-status-icon">${icon}</div>
+                <div class="download-info">
+                    <div class="download-name">${Utils.sanitizeHTML(item.name)}</div>
+                    <div class="download-details">
+                        <span>${item.status}${item.isVideo ? ' (video)' : ''}</span>
+                        ${item.error ? `<span style="color: #ef4444;">${item.error}</span>` : ''}
+                    </div>
+                </div>
+                ${downloadButton}
+            `;
+            
+            listElement.appendChild(itemElement);
+        });
+    }
     
     // UI Helper Methods
     showWidget() {
