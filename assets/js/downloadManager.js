@@ -189,6 +189,36 @@ class DownloadManager {
             .download-item.failed {
                 background: rgba(239, 68, 68, 0.1); border-color: #ef4444;
             }
+            .individual-download-btn {
+                padding: 4px 8px; background: #3b82f6; color: white;
+                border: none; border-radius: 4px; font-size: 11px;
+                cursor: pointer; transition: background 0.2s;
+                margin-left: 8px;
+            }
+            .individual-download-btn:hover {
+                background: #2563eb;
+            }
+            
+            .queue-info {
+                text-align: center; margin-top: 8px;
+                font-size: 12px; color: #6b7280;
+            }
+            
+            .individual-download-btn {
+                padding: 4px 8px; background: #3b82f6; color: white;
+                border: none; border-radius: 4px; font-size: 11px;
+                cursor: pointer; transition: background 0.2s;
+                margin-left: 8px;
+            }
+            .individual-download-btn:hover {
+                background: #2563eb;
+            }
+            
+            .queue-info {
+                text-align: center; margin-top: 8px;
+                font-size: 12px; color: #6b7280;
+            }
+            
             .download-item.waiting {
                 background: rgba(156, 163, 175, 0.1); border-color: #9ca3af;
             }
