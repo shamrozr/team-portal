@@ -388,7 +388,7 @@ class DownloadManager {
         return videoExtensions.includes(extension);
     }
     
-    // Method 1: Multiple files download using JSZip
+    // Method 1: Multiple files download using JSZip (Hybrid Approach)
     async downloadFiles(files) {
         if (!files || files.length === 0) {
             Utils.showWarning('No files to download');
@@ -408,8 +408,209 @@ class DownloadManager {
             return;
         }
         
-        // For bulk downloads, include ALL files (including videos) - let user decide
-        this.setupBulkDownload(files);
+        // Separate videos from other files
+        const videos = files.filter(file => this.isVideoFile(file));
+        const nonVideos = files.filter(file => !this.isVideoFile(file));
+        
+        console.log(`Found ${videos.length} videos and ${nonVideos.length} other files`);
+        
+        // Handle based on file composition
+        if (videos.length === 0) {
+            // Only non-videos: create ZIP normally
+            this.setupBulkDownload(nonVideos);
+        } else if (nonVideos.length === 0) {
+            // Only videos: show video download page
+            this.showVideoDownloadPage(videos);
+        } else {
+            // Mixed files: hybrid approach
+            this.setupHybridDownload(nonVideos, videos);
+        }
+    }
+    
+    setupHybridDownload(nonVideos, videos) {
+        Utils.showInfo(`📦 Creating ZIP with ${nonVideos.length} files. ${videos.length} videos will open separately.`);
+        
+        // Start ZIP download for non-videos
+        this.setupBulkDownload(nonVideos);
+        
+        // Show video download page after a short delay
+        setTimeout(() => {
+            this.showVideoDownloadPage(videos);
+        }, 2000);
+    }
+    
+    showVideoDownloadPage(videos) {
+        console.log(`🎥 Opening video download page for ${videos.length} videos`);
+        
+        // Create HTML content for video downloads
+        const htmlContent = `
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Video Downloads - ${videos.length} files</title>
+                <style>
+                    body {
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                        max-width: 800px; margin: 0 auto; padding: 20px;
+                        background: #f8fafc; color: #334155;
+                    }
+                    .header {
+                        text-align: center; margin-bottom: 30px;
+                        padding: 20px; background: white; border-radius: 12px;
+                        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                    }
+                    .video-list {
+                        display: grid; gap: 12px;
+                    }
+                    .video-item {
+                        display: flex; align-items: center; gap: 15px;
+                        padding: 15px; background: white; border-radius: 8px;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                        transition: all 0.2s ease;
+                    }
+                    .video-item:hover {
+                        transform: translateY(-2px);
+                        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+                    }
+                    .video-icon {
+                        font-size: 24px; flex-shrink: 0;
+                    }
+                    .video-info {
+                        flex: 1; min-width: 0;
+                    }
+                    .video-name {
+                        font-weight: 500; color: #1e293b;
+                        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                    }
+                    .video-size {
+                        font-size: 12px; color: #64748b; margin-top: 4px;
+                    }
+                    .download-btn {
+                        padding: 8px 16px; background: #3b82f6; color: white;
+                        text-decoration: none; border-radius: 6px;
+                        font-size: 14px; font-weight: 500;
+                        transition: background 0.2s;
+                    }
+                    .download-btn:hover {
+                        background: #2563eb;
+                    }
+                    .bulk-actions {
+                        margin: 20px 0; text-align: center;
+                        padding: 20px; background: white; border-radius: 8px;
+                    }
+                    .bulk-btn {
+                        margin: 0 10px; padding: 10px 20px;
+                        background: #059669; color: white; border: none;
+                        border-radius: 6px; cursor: pointer; font-weight: 500;
+                    }
+                    .instructions {
+                        background: #e0f2fe; border: 1px solid #0ea5e9;
+                        padding: 15px; border-radius: 8px; margin-bottom: 20px;
+                        font-size: 14px; line-height: 1.5;
+                    }
+                    @media (max-width: 768px) {
+                        body { padding: 10px; }
+                        .video-item { flex-direction: column; text-align: center; }
+                        .video-info { text-align: center; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>🎥 Video Downloads</h1>
+                    <p>${videos.length} video file${videos.length > 1 ? 's' : ''} ready for download</p>
+                </div>
+                
+                <div class="instructions">
+                    <strong>📱 Mobile Users:</strong> Tap "Download" for each video. They'll open in Google Drive where you can download the full files.
+                    <br><strong>💻 Desktop Users:</strong> Right-click "Download" → "Save link as" for faster downloads.
+                </div>
+                
+                <div class="bulk-actions">
+                    <button class="bulk-btn" onclick="downloadAll()">📥 Open All Downloads</button>
+                    <button class="bulk-btn" onclick="copyAllLinks()">📋 Copy All Links</button>
+                </div>
+                
+                <div class="video-list">
+                    ${videos.map((video, index) => `
+                        <div class="video-item">
+                            <div class="video-icon">🎬</div>
+                            <div class="video-info">
+                                <div class="video-name" title="${this.escapeHtml(video.name)}">${this.escapeHtml(video.name)}</div>
+                                <div class="video-size">${video.size ? this.formatFileSize(video.size) : 'Size unknown'}</div>
+                            </div>
+                            <a href="https://drive.google.com/uc?export=download&id=${video.id}" 
+                               class="download-btn" 
+                               target="_blank"
+                               data-video-url="https://drive.google.com/uc?export=download&id=${video.id}">
+                               📥 Download
+                            </a>
+                        </div>
+                    `).join('')}
+                </div>
+                
+                <script>
+                    function downloadAll() {
+                        const links = document.querySelectorAll('.download-btn');
+                        links.forEach((link, index) => {
+                            setTimeout(() => {
+                                window.open(link.href, '_blank');
+                            }, index * 1000); // 1 second delay between each
+                        });
+                    }
+                    
+                    function copyAllLinks() {
+                        const links = Array.from(document.querySelectorAll('.download-btn'))
+                            .map(link => link.href)
+                            .join('\\n');
+                        
+                        navigator.clipboard.writeText(links).then(() => {
+                            alert('✅ All download links copied to clipboard!');
+                        }).catch(() => {
+                            // Fallback for older browsers
+                            const textArea = document.createElement('textarea');
+                            textArea.value = links;
+                            document.body.appendChild(textArea);
+                            textArea.select();
+                            document.execCommand('copy');
+                            document.body.removeChild(textArea);
+                            alert('✅ All download links copied to clipboard!');
+                        });
+                    }
+                    
+                    // Add click tracking
+                    document.querySelectorAll('.download-btn').forEach(btn => {
+                        btn.addEventListener('click', function(e) {
+                            console.log('Video download initiated:', this.dataset.videoUrl);
+                        });
+                    });
+                </script>
+            </body>
+            </html>
+        `;
+        
+        // Open the video download page
+        const downloadWindow = window.open('', '_blank');
+        downloadWindow.document.write(htmlContent);
+        downloadWindow.document.close();
+        
+        Utils.showSuccess(`🎥 Video download page opened with ${videos.length} videos`);
+    }
+    
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    formatFileSize(bytes) {
+        if (!bytes || bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
     
     setupBulkDownload(files) {
@@ -473,22 +674,7 @@ class DownloadManager {
             
             console.log(`Downloading file ${index + 1}/${this.downloadQueueData.length}: ${item.name}`);
             
-            // Skip videos completely for ZIP downloads to avoid corruption
-            if (this.isVideoFile(item)) {
-                console.log(`Skipping video file: ${item.name} (would be corrupted in ZIP)`);
-                item.status = 'skipped';
-                item.error = 'Videos skipped (would be corrupted)';
-                this.zipProgress.downloaded++; // Count as processed
-                this.updateProgressSection(
-                    `Skipped video ${this.zipProgress.downloaded}/${this.zipProgress.total}...`,
-                    this.zipProgress.downloaded,
-                    this.zipProgress.total
-                );
-                this.updateDownloadList();
-                return;
-            }
-            
-            // For non-video files, use fetch method to get proper file data
+            // For ZIP downloads, only include non-video files
             const urls = this.getDirectDownloadURL(item.id);
             let success = false;
             
@@ -508,7 +694,7 @@ class DownloadManager {
                         const blob = await response.blob();
                         console.log(`URL ${i + 1} returned ${blob.size} bytes for ${item.name}`);
                         
-                        // For non-videos, accept any reasonable file size
+                        // Accept any reasonable file size for non-videos
                         if (blob.size > 100) {
                             this.zip.file(item.name, blob);
                             
@@ -675,6 +861,7 @@ class DownloadManager {
             if (item.status === 'completed') icon = '✅';
             else if (item.status === 'failed') icon = '❌';
             else if (item.status === 'current') icon = '⬇️';
+            else if (item.status === 'skipped') icon = '⏩';
             
             itemElement.innerHTML = `
                 <div class="download-status-icon">${icon}</div>
@@ -683,6 +870,7 @@ class DownloadManager {
                     <div class="download-details">
                         <span>${item.status}</span>
                         ${item.error ? `<span style="color: #ef4444;">${item.error}</span>` : ''}
+                        ${item.warning ? `<span style="color: #f59e0b;">${item.warning}</span>` : ''}
                     </div>
                 </div>
             `;
