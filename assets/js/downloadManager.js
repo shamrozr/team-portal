@@ -41,14 +41,15 @@ class DownloadManager {
         return /iPhone|iPad|iPod/i.test(navigator.userAgent);
     }
     
-    // Method 1: Direct download URLs for Google Drive files
+    // Get multiple direct download URL formats for better video compatibility
     getDirectDownloadURL(fileId) {
-        // Multiple URL formats to try for better compatibility
+        // Multiple URL formats to try for better compatibility, especially for videos
         return [
+            `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t&authuser=0`,
+            `https://drive.google.com/file/d/${fileId}/view?usp=drive_link`,
             `https://drive.google.com/uc?export=download&id=${fileId}`,
             `https://lh3.googleusercontent.com/d/${fileId}`,
-            `https://drive.google.com/uc?id=${fileId}&export=download`,
-            `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`
+            `https://drive.google.com/uc?id=${fileId}&export=download`
         ];
     }
     
@@ -325,8 +326,20 @@ class DownloadManager {
         
         let downloadUrl;
         if (isVideo) {
-            // For videos, use the export=download&confirm=t URL to force full file download
-            downloadUrl = `https://drive.google.com/uc?export=download&id=${file.id}&confirm=t`;
+            // For videos, use the Google Drive direct file link that bypasses preview
+            downloadUrl = `https://drive.google.com/file/d/${file.id}/view?usp=drive_link`;
+            
+            // Open in new tab for videos since they may redirect to a download page
+            try {
+                window.open(downloadUrl, '_blank');
+                Utils.showSuccess(`Opening video download: ${file.name}`);
+                console.log(`Video download opened in new tab: ${downloadUrl}`);
+                return;
+            } catch (error) {
+                console.warn('Failed to open video in new tab, trying direct download...');
+                // Fallback to direct download method
+                downloadUrl = `https://drive.google.com/uc?export=download&id=${file.id}&confirm=t&authuser=0`;
+            }
         } else {
             // For other files, use the standard direct download URL
             downloadUrl = `https://drive.google.com/uc?export=download&id=${file.id}`;
@@ -447,41 +460,73 @@ class DownloadManager {
             
             console.log(`Downloading file ${index + 1}/${this.downloadQueueData.length}: ${item.name}`);
             
+            // For ZIP downloads, if it's a video, warn user about potential issues
+            if (this.isVideoFile(item)) {
+                console.warn(`Video file ${item.name} may have issues in ZIP download due to Google Drive limitations`);
+            }
+            
             // For ZIP downloads, use fetch method to get proper file data
             const urls = this.getDirectDownloadURL(item.id);
             let success = false;
+            let bestBlob = null;
+            let bestSize = 0;
             
             for (let i = 0; i < urls.length && !success; i++) {
                 try {
-                    const response = await fetch(urls[i]);
+                    console.log(`Trying URL ${i + 1}/${urls.length} for ${item.name}`);
+                    
+                    const response = await fetch(urls[i], {
+                        method: 'GET',
+                        headers: {
+                            'User-Agent': navigator.userAgent,
+                            'Referer': 'https://drive.google.com/'
+                        }
+                    });
                     
                     if (response.ok) {
                         const blob = await response.blob();
+                        console.log(`URL ${i + 1} returned ${blob.size} bytes for ${item.name}`);
                         
-                        // Verify we got a proper file size (not a tiny preview)
-                        if (blob.size > 1000 || !this.isVideoFile(item)) { // Allow small non-video files
+                        // For videos, we need substantial file size (> 1MB), for others > 1KB is OK
+                        const minSize = this.isVideoFile(item) ? 1024 * 1024 : 1000;
+                        
+                        if (blob.size > minSize) {
                             this.zip.file(item.name, blob);
                             
                             item.status = 'completed';
                             this.zipProgress.downloaded++;
                             success = true;
                             
+                            console.log(`✅ Successfully downloaded ${item.name} (${blob.size} bytes)`);
+                            
                             this.updateProgressSection(
                                 `Downloaded ${this.zipProgress.downloaded}/${this.zipProgress.total} files...`,
                                 this.zipProgress.downloaded,
                                 this.zipProgress.total
                             );
-                        } else {
-                            console.warn(`File ${item.name} seems too small (${blob.size} bytes), trying next URL...`);
+                        } else if (blob.size > bestSize) {
+                            // Keep track of the largest file we got (might be useful as fallback)
+                            bestBlob = blob;
+                            bestSize = blob.size;
+                            console.warn(`File ${item.name} size ${blob.size} bytes too small, continuing...`);
                         }
+                    } else {
+                        console.warn(`URL ${i + 1} failed with status: ${response.status}`);
                     }
                 } catch (error) {
                     console.warn(`URL ${i + 1} failed for ${item.name}:`, error.message);
                 }
             }
             
-            if (!success) {
-                throw new Error('All URLs failed or file too small');
+            // If no URL worked but we have a best attempt, use it with a warning
+            if (!success && bestBlob && bestSize > 100) {
+                console.warn(`Using best available version of ${item.name} (${bestSize} bytes) - may be incomplete`);
+                this.zip.file(item.name, bestBlob);
+                item.status = 'completed';
+                item.warning = `File may be incomplete (${bestSize} bytes)`;
+                this.zipProgress.downloaded++;
+            } else if (!success) {
+                throw new Error('All URLs failed or returned files too small');
             }
             
         } catch (error) {
