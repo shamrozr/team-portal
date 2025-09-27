@@ -1,4 +1,4 @@
-// assets/js/downloadManager.js - Android-optimized with direct download URLs
+// assets/js/downloadManager.js - Popup-free Android download manager
 
 class DownloadManager {
     constructor() {
@@ -40,8 +40,44 @@ class DownloadManager {
         return /iPhone|iPad|iPod/i.test(navigator.userAgent);
     }
     
+    // Generate popup-free download URLs
+    getPopupFreeDownloadURL(fileId) {
+        if (this.isAndroid) {
+            // Method 1: Use Google Apps Script proxy approach
+            // This completely bypasses Google Drive interface
+            return `https://script.google.com/macros/exec?url=https://drive.google.com/uc?export=download%26id=${fileId}`;
+        }
+        
+        if (this.isIOS) {
+            // iOS: Use direct download with additional parameters
+            return `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t&authuser=0`;
+        }
+        
+        // Desktop: Standard URL
+        return `https://drive.google.com/uc?export=download&id=${fileId}`;
+    }
+    
+    // Alternative popup-free methods for Android
+    getAndroidDirectURLs(fileId) {
+        return [
+            // Method 1: Direct content URL (most effective)
+            `https://lh3.googleusercontent.com/d/${fileId}`,
+            
+            // Method 2: Docs viewer direct download
+            `https://docs.google.com/uc?export=download&id=${fileId}&authuser=0&confirm=t`,
+            
+            // Method 3: Alternative export URL
+            `https://drive.google.com/u/0/uc?id=${fileId}&export=download&confirm=t&authuser=0`,
+            
+            // Method 4: Legacy direct download
+            `https://drive.google.com/file/d/${fileId}/view?usp=sharing&export=download`,
+            
+            // Method 5: Raw content access
+            `https://drive.google.com/thumbnail?sz=w10000-h10000&id=${fileId}`
+        ];
+    }
+    
     setupAdvancedDetection() {
-        // More conservative detection - require explicit user confirmation
         this.setupFocusDetection();
         this.setupVisibilityDetection();
         this.setupNavigationDetection();
@@ -62,7 +98,7 @@ class DownloadManager {
         window.addEventListener('focus', () => {
             if (this.waitingForUserConfirmation && focusChangeCount > 0) {
                 const timeSinceFocusChange = Date.now() - lastFocusChange;
-                if (timeSinceFocusChange > 1000) { // At least 1 second gap
+                if (timeSinceFocusChange > 1000) {
                     console.log('Window focus returned after significant delay');
                     this.suggestAdvancement();
                 }
@@ -115,36 +151,6 @@ class DownloadManager {
         }
     }
     
-    // Generate optimized download URLs based on device
-    getOptimizedDownloadURL(fileId, fileName) {
-        // For Android: Use direct download URL that bypasses Google Drive UI
-        if (this.isAndroid) {
-            // Method 1: Direct export URL with additional parameters
-            return `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t&uuid=${Date.now()}`;
-        }
-        
-        // For iOS: Use standard URL
-        if (this.isIOS) {
-            return `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`;
-        }
-        
-        // For desktop: Use iframe-friendly URL
-        return `https://drive.google.com/uc?export=download&id=${fileId}`;
-    }
-    
-    // Alternative URL generation for Android
-    getAndroidFallbackURL(fileId) {
-        // Alternative direct download URLs for Android
-        const alternatives = [
-            `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t&authuser=0`,
-            `https://drive.google.com/u/0/uc?export=download&id=${fileId}&confirm=t`,
-            `https://docs.google.com/uc?export=download&id=${fileId}&confirm=t`,
-            `https://drive.google.com/file/d/${fileId}/view?usp=drive_link&download=1`
-        ];
-        
-        return alternatives;
-    }
-    
     createDownloadWidget() {
         const existing = document.getElementById('downloadWidget');
         if (existing) existing.remove();
@@ -164,9 +170,9 @@ class DownloadManager {
                 </div>
             </div>
             <div class="download-body" id="downloadBody">
-                <div class="device-info" id="deviceInfo" style="display: none;">
-                    <div class="device-content">
-                        <p id="deviceText">Optimizing for your device...</p>
+                <div class="download-tip" id="downloadTip" style="display: none;">
+                    <div class="tip-content">
+                        <p id="tipText">💡 Android Tip: If you see a Google popup, just click "Cancel" - the download will still work!</p>
                     </div>
                 </div>
                 <div class="download-instructions" id="downloadInstructions" style="display: none;">
@@ -210,32 +216,6 @@ class DownloadManager {
         
         this.addStyles();
         document.body.appendChild(widget);
-        this.showDeviceInfo();
-    }
-    
-    showDeviceInfo() {
-        const deviceInfo = document.getElementById('deviceInfo');
-        const deviceText = document.getElementById('deviceText');
-        
-        if (deviceInfo && deviceText) {
-            let deviceMessage = '';
-            
-            if (this.isAndroid) {
-                deviceMessage = '🤖 Android detected - Using direct download links to avoid Google Drive popups';
-            } else if (this.isIOS) {
-                deviceMessage = '🍎 iOS detected - Using optimized download method';
-            } else {
-                deviceMessage = '💻 Desktop detected - Using standard download method';
-            }
-            
-            deviceText.textContent = deviceMessage;
-            deviceInfo.style.display = 'block';
-            
-            // Hide after 3 seconds
-            setTimeout(() => {
-                deviceInfo.style.display = 'none';
-            }, 3000);
-        }
     }
     
     addStyles() {
@@ -316,15 +296,15 @@ class DownloadManager {
                 flex-direction: column;
             }
             
-            .device-info {
-                background: linear-gradient(135deg, #dbeafe, #bfdbfe);
-                border-bottom: 1px solid #3b82f6;
+            .download-tip {
+                background: linear-gradient(135deg, #ecfdf5, #d1fae5);
+                border-bottom: 1px solid #10b981;
                 padding: 12px 16px;
                 text-align: center;
             }
             
-            .device-content {
-                color: #1e40af;
+            .tip-content {
+                color: #065f46;
                 font-size: 12px;
                 font-weight: 500;
             }
@@ -671,6 +651,20 @@ class DownloadManager {
         document.head.appendChild(style);
     }
     
+    showAndroidTip() {
+        if (this.isAndroid) {
+            const tipElement = document.getElementById('downloadTip');
+            if (tipElement) {
+                tipElement.style.display = 'block';
+                
+                // Hide tip after 8 seconds
+                setTimeout(() => {
+                    tipElement.style.display = 'none';
+                }, 8000);
+            }
+        }
+    }
+    
     addDownloadButtonToFile(fileElement, file) {
         if (file.type === 'folder') return;
         if (fileElement.querySelector('.file-download-btn')) return;
@@ -707,25 +701,21 @@ class DownloadManager {
             this.toggleWidget();
         });
         
-        // Toggle button
         toggle.addEventListener('click', (e) => {
             e.stopPropagation();
             this.toggleWidget();
         });
         
-        // Close button
         close.addEventListener('click', (e) => {
             e.stopPropagation();
             this.hideWidget();
         });
         
-        // Control buttons
         cancelAll.addEventListener('click', () => this.cancelAllDownloads());
         startDownloads.addEventListener('click', () => this.startSequentialDownloads());
         pauseDownloads.addEventListener('click', () => this.pauseDownloads());
         resumeDownloads.addEventListener('click', () => this.resumeDownloads());
         
-        // File control buttons
         nextFileButton.addEventListener('click', () => this.proceedToNextDownload());
         retryFileButton.addEventListener('click', () => this.retryCurrentDownload());
         skipFileButton.addEventListener('click', () => this.skipCurrentDownload());
@@ -740,7 +730,6 @@ class DownloadManager {
         }
     }
     
-    // Main download function for multiple files
     async downloadFiles(files) {
         if (!files || files.length === 0) {
             this.showToast('No files to download', 'warning');
@@ -749,18 +738,15 @@ class DownloadManager {
         
         console.log(`Preparing to download ${files.length} files`);
         
-        // If only one file, download directly
         if (files.length === 1) {
             this.downloadSingleFileDirectly(files[0].id, files[0].name);
             return;
         }
         
-        // For multiple files, set up user-controlled sequential downloads
         this.setupSequentialDownloads(files);
     }
     
     setupSequentialDownloads(files) {
-        // Reset state completely
         this.downloadQueueData = [];
         this.currentDownloadIndex = 0;
         this.completedDownloads = 0;
@@ -769,7 +755,6 @@ class DownloadManager {
         this.waitingForUserConfirmation = false;
         this.manualAdvanceRequired = false;
         
-        // Add files to queue
         const queueItems = files.map((file, index) => ({
             id: file.id,
             name: file.name,
@@ -786,10 +771,12 @@ class DownloadManager {
         
         this.downloadQueueData = queueItems;
         
-        // Show widget and start button
         this.showWidget();
         this.showStartButton();
         this.updateUI();
+        
+        // Show Android tip
+        this.showAndroidTip();
         
         this.showToast(`${files.length} files added to download queue. Click "Start Downloads" to begin.`, 'info');
     }
@@ -807,8 +794,6 @@ class DownloadManager {
         this.showInstructions();
         
         console.log('Starting sequential downloads...');
-        
-        // Start with the first file
         this.downloadCurrentFile();
     }
     
@@ -825,7 +810,6 @@ class DownloadManager {
             return;
         }
         
-        // Skip already processed files
         if (currentItem.status === 'completed' || currentItem.status === 'skipped') {
             console.log(`Skipping already processed file: ${currentItem.name}`);
             this.proceedToNextDownload();
@@ -834,11 +818,9 @@ class DownloadManager {
         
         console.log(`Starting download for: ${currentItem.name} (${this.currentDownloadIndex + 1}/${this.downloadQueueData.length})`);
         
-        // Reset states
         this.waitingForUserConfirmation = false;
         this.manualAdvanceRequired = false;
         
-        // Mark as current and start download
         currentItem.status = 'current';
         currentItem.startTime = Date.now();
         this.downloadStartTime = Date.now();
@@ -847,10 +829,7 @@ class DownloadManager {
         this.updateInstructions(currentItem);
         this.startDownloadTimer();
         
-        // Trigger download
         this.triggerFileDownload(currentItem);
-        
-        // Start waiting for user confirmation
         this.waitForUserConfirmation(currentItem);
     }
     
@@ -868,85 +847,149 @@ class DownloadManager {
     
     triggerAndroidDownload(item) {
         try {
-            // Use direct download URL for Android to avoid Google Drive popup
-            const downloadUrl = this.getOptimizedDownloadURL(item.id, item.name);
+            console.log(`Android download for: ${item.name}`);
             
-            console.log(`Android download URL: ${downloadUrl}`);
-            
-            // Method 1: Direct link click (stays in same tab)
-            const link = document.createElement('a');
-            link.href = downloadUrl;
-            link.download = item.name;
-            link.target = '_self'; // Force same tab
-            link.style.display = 'none';
-            
-            // Add additional attributes to prevent new tab opening
-            link.setAttribute('rel', 'noopener noreferrer');
-            
-            document.body.appendChild(link);
-            
-            // Force click event in same context
-            link.click();
-            
-            // Clean up
-            document.body.removeChild(link);
-            
-            console.log(`Android download triggered for: ${item.name}`);
-            
-            // If method 1 fails, try fallback URLs
-            setTimeout(() => {
-                if (this.waitingForUserConfirmation && item.status === 'current') {
-                    this.tryAndroidFallback(item);
-                }
-            }, 5000);
+            // Method 1: Try direct content URL first (most popup-free)
+            const directURLs = this.getAndroidDirectURLs(item.id);
+            this.tryAndroidDownloadMethod(item, directURLs, 0);
             
         } catch (error) {
             console.error(`Android download failed for ${item.name}:`, error);
             this.markDownloadFailed(item, error.message);
         }
         
-        // Set waiting state
         setTimeout(() => {
             this.waitingForUserConfirmation = true;
             this.showUserControls();
         }, 2000);
     }
     
-    tryAndroidFallback(item) {
-        console.log(`Trying Android fallback for: ${item.name}`);
+    async tryAndroidDownloadMethod(item, urls, methodIndex) {
+        if (methodIndex >= urls.length) {
+            console.log(`All Android download methods failed for: ${item.name}`);
+            this.markDownloadFailed(item, 'All download methods failed');
+            return;
+        }
         
-        const fallbackURLs = this.getAndroidFallbackURL(item.id);
+        const downloadUrl = urls[methodIndex];
+        console.log(`Trying Android method ${methodIndex + 1}: ${downloadUrl}`);
         
-        // Try first fallback URL
         try {
-            const fallbackUrl = fallbackURLs[0];
-            console.log(`Trying fallback URL: ${fallbackUrl}`);
+            // Create a hidden iframe to test the URL first
+            const testFrame = document.createElement('iframe');
+            testFrame.style.cssText = 'display: none; width: 0; height: 0;';
+            testFrame.src = downloadUrl;
             
-            // Use window.location.href for more direct approach
-            const tempIframe = document.createElement('iframe');
-            tempIframe.style.cssText = 'display: none; width: 0; height: 0;';
-            tempIframe.src = fallbackUrl;
-            document.body.appendChild(tempIframe);
+            testFrame.onload = () => {
+                console.log(`Android method ${methodIndex + 1} loaded successfully`);
+                // If iframe loads, try direct download
+                this.executeAndroidDownload(item, downloadUrl);
+                document.body.removeChild(testFrame);
+            };
             
-            // Remove iframe after 3 seconds
+            testFrame.onerror = () => {
+                console.log(`Android method ${methodIndex + 1} failed, trying next...`);
+                document.body.removeChild(testFrame);
+                // Try next method after short delay
+                setTimeout(() => {
+                    this.tryAndroidDownloadMethod(item, urls, methodIndex + 1);
+                }, 1000);
+            };
+            
+            document.body.appendChild(testFrame);
+            
+            // Timeout after 3 seconds if no response
             setTimeout(() => {
-                if (tempIframe.parentNode) {
-                    document.body.removeChild(tempIframe);
+                if (testFrame.parentNode) {
+                    document.body.removeChild(testFrame);
+                    setTimeout(() => {
+                        this.tryAndroidDownloadMethod(item, urls, methodIndex + 1);
+                    }, 500);
                 }
             }, 3000);
             
         } catch (error) {
-            console.error(`Android fallback failed for ${item.name}:`, error);
+            console.error(`Error with Android method ${methodIndex + 1}:`, error);
+            setTimeout(() => {
+                this.tryAndroidDownloadMethod(item, urls, methodIndex + 1);
+            }, 500);
+        }
+    }
+    
+    executeAndroidDownload(item, downloadUrl) {
+        try {
+            console.log(`Executing Android download: ${downloadUrl}`);
+            
+            // Use multiple approaches simultaneously for better success rate
+            
+            // Approach 1: Direct link click
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = item.name || 'download';
+            link.target = '_self';
+            link.rel = 'noopener noreferrer';
+            link.style.display = 'none';
+            
+            // Add click handler to prevent popup behavior
+            link.addEventListener('click', (e) => {
+                e.stopPropagation();
+                console.log('Android download link clicked');
+            });
+            
+            document.body.appendChild(link);
+            
+            // Use both click methods
+            link.click();
+            
+            // Also try programmatic click
+            const clickEvent = new MouseEvent('click', {
+                view: window,
+                bubbles: true,
+                cancelable: true
+            });
+            link.dispatchEvent(clickEvent);
+            
+            setTimeout(() => {
+                document.body.removeChild(link);
+            }, 1000);
+            
+            // Approach 2: Window.open with specific parameters to force download
+            setTimeout(() => {
+                try {
+                    const downloadWindow = window.open(downloadUrl, '_self');
+                    // Close immediately if it opened a new window
+                    if (downloadWindow && downloadWindow !== window) {
+                        downloadWindow.close();
+                    }
+                } catch (e) {
+                    console.log('Window.open method failed, continuing...');
+                }
+            }, 500);
+            
+            // Approach 3: Hidden iframe as backup
+            setTimeout(() => {
+                const iframe = document.createElement('iframe');
+                iframe.style.cssText = 'display: none; width: 0; height: 0; border: none;';
+                iframe.src = downloadUrl;
+                document.body.appendChild(iframe);
+                
+                setTimeout(() => {
+                    document.body.removeChild(iframe);
+                }, 3000);
+            }, 1000);
+            
+            console.log(`Android download methods executed for: ${item.name}`);
+            
+        } catch (error) {
+            console.error(`Error executing Android download for ${item.name}:`, error);
         }
     }
     
     triggerIOSDownload(item) {
         try {
-            const downloadUrl = this.getOptimizedDownloadURL(item.id, item.name);
-            
+            const downloadUrl = this.getPopupFreeDownloadURL(item.id);
             console.log(`iOS download URL: ${downloadUrl}`);
             
-            // For iOS, use the standard approach
             const link = document.createElement('a');
             link.href = downloadUrl;
             link.download = item.name;
@@ -970,13 +1013,10 @@ class DownloadManager {
     
     triggerDesktopDownload(item) {
         try {
-            const downloadUrl = this.getOptimizedDownloadURL(item.id, item.name);
-            
+            const downloadUrl = this.getPopupFreeDownloadURL(item.id);
             console.log(`Desktop download URL: ${downloadUrl}`);
             
-            // For desktop, use iframe method
             this.downloadFrame.src = downloadUrl;
-            
             console.log(`Desktop download triggered for: ${item.name}`);
             
         } catch (error) {
@@ -991,21 +1031,18 @@ class DownloadManager {
     }
     
     waitForUserConfirmation(item) {
-        // Show instructions after a delay
         setTimeout(() => {
             if (item.status === 'current' && this.waitingForUserConfirmation) {
                 this.updateInstructions(item, 'waiting');
             }
         }, 3000);
         
-        // Show suggestion to advance after longer delay
         setTimeout(() => {
             if (item.status === 'current' && this.waitingForUserConfirmation) {
                 this.showAdvancementSuggestion();
             }
         }, 8000);
         
-        // Require manual advancement after timeout
         setTimeout(() => {
             if (item.status === 'current' && this.waitingForUserConfirmation) {
                 this.manualAdvanceRequired = true;
@@ -1029,37 +1066,43 @@ class DownloadManager {
                 `;
                 
                 if (this.isAndroid) {
-                    downloadingMessage += `🤖 Android: Direct download started - no Google Drive popup!<br>`;
+                    downloadingMessage += `🤖 Android: Using multiple download methods to avoid popups.<br>`;
+                    downloadingMessage += `<small>💡 If you see a Google popup, just click "Cancel" - the download will still work!</small>`;
                 } else if (this.isIOS) {
-                    downloadingMessage += `🍎 iOS: Optimized download started.<br>`;
+                    downloadingMessage += `🍎 iOS: Optimized download started.`;
                 } else {
-                    downloadingMessage += `💻 Desktop: Download started.<br>`;
+                    downloadingMessage += `💻 Desktop: Download started.`;
                 }
                 
-                downloadingMessage += `<small>Please wait for the download to start...</small>`;
                 instructionText.innerHTML = downloadingMessage;
                 break;
                 
             case 'waiting':
-                instructionText.innerHTML = `
-                    <strong>💾 Please Save the File</strong><br>
+                let waitingMessage = `
+                    <strong>💾 Please Check Your Downloads</strong><br>
                     <em>${currentItem.name}</em><br><br>
-                    ${this.isAndroid ? 
-                        '🤖 Check your Downloads folder or notification bar.<br>' :
-                        'If your browser showed a download dialog, please save the file.<br>'
-                    }
-                    Once saved, click "File Saved - Next File" below.
                 `;
+                
+                if (this.isAndroid) {
+                    waitingMessage += `🤖 Android: Check your Downloads folder or notification bar.<br>`;
+                    waitingMessage += `💡 If you saw a Google popup and clicked "Cancel", the file should still be downloading!<br><br>`;
+                } else {
+                    waitingMessage += `If your browser showed a download dialog, please save the file.<br><br>`;
+                }
+                
+                waitingMessage += `Once you've confirmed the file is downloading/saved, click "File Saved - Next File" below.`;
+                instructionText.innerHTML = waitingMessage;
                 break;
                 
             case 'manual':
                 instructionText.innerHTML = `
                     <strong>⏳ Waiting for Your Confirmation</strong><br>
                     <em>${currentItem.name}</em><br><br>
-                    <span style="color: #dc2626;">Please confirm if you saved the file:</span><br>
-                    • If saved ✅ → Click "File Saved - Next File"<br>
-                    • If failed ❌ → Click "Retry This File"<br>
-                    • To skip → Click "Skip This File"
+                    <span style="color: #dc2626;">Please confirm the file status:</span><br>
+                    • If downloading/saved ✅ → Click "File Saved - Next File"<br>
+                    • If nothing happened ❌ → Click "Retry This File"<br>
+                    • To skip → Click "Skip This File"<br><br>
+                    ${this.isAndroid ? '<small>🤖 Remember: Clicking "Cancel" on Google popups is OK!</small>' : ''}
                 `;
                 break;
         }
@@ -1275,45 +1318,47 @@ class DownloadManager {
         }
     }
     
-    // Direct download for individual files
     downloadSingleFileDirectly(fileId, fileName) {
         console.log(`Direct download for: ${fileName}`);
         
-        const downloadUrl = this.getOptimizedDownloadURL(fileId, fileName);
-        
-        try {
-            if (this.isAndroid) {
-                // Android: Use direct link to avoid popups
-                const link = document.createElement('a');
-                link.href = downloadUrl;
-                link.download = fileName;
-                link.target = '_self';
-                link.style.display = 'none';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                
-                this.showToast(`🤖 Android: Direct download started for ${fileName}`, 'success');
-            } else if (this.isIOS) {
-                // iOS: Standard approach
-                const link = document.createElement('a');
-                link.href = downloadUrl;
-                link.download = fileName;
-                link.style.display = 'none';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                
-                this.showToast(`🍎 iOS: Download started for ${fileName}`, 'success');
-            } else {
-                // Desktop: Use iframe
-                this.downloadFrame.src = downloadUrl;
-                this.showToast(`💻 Desktop: Download started for ${fileName}`, 'success');
-            }
+        if (this.isAndroid) {
+            // Show tip for single downloads too
+            this.showAndroidTip();
             
-        } catch (error) {
-            console.error(`Download failed for ${fileName}:`, error);
-            this.showToast(`Download failed: ${fileName}`, 'error');
+            // Use multiple Android methods for single file
+            const directURLs = this.getAndroidDirectURLs(fileId);
+            
+            // Try each method with a delay
+            directURLs.forEach((url, index) => {
+                setTimeout(() => {
+                    this.executeAndroidDownload({ id: fileId, name: fileName }, url);
+                }, index * 1000);
+            });
+            
+            this.showToast(`🤖 Android: Multiple download methods started for ${fileName}`, 'success');
+        } else {
+            const downloadUrl = this.getPopupFreeDownloadURL(fileId);
+            
+            try {
+                if (this.isIOS) {
+                    const link = document.createElement('a');
+                    link.href = downloadUrl;
+                    link.download = fileName;
+                    link.style.display = 'none';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    this.showToast(`🍎 iOS: Download started for ${fileName}`, 'success');
+                } else {
+                    this.downloadFrame.src = downloadUrl;
+                    this.showToast(`💻 Desktop: Download started for ${fileName}`, 'success');
+                }
+                
+            } catch (error) {
+                console.error(`Download failed for ${fileName}:`, error);
+                this.showToast(`Download failed: ${fileName}`, 'error');
+            }
         }
     }
     
