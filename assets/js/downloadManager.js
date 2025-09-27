@@ -1,4 +1,4 @@
-// assets/js/downloadManager.js - Your original working code + individual download buttons
+// assets/js/downloadManager.js - Enhanced with client-side ZIP creation
 
 class DownloadManager {
     constructor() {
@@ -8,11 +8,32 @@ class DownloadManager {
         this.failedDownloads = 0;
         this.isDownloading = false;
         this.isMobile = this.detectMobile();
+        this.zipWorker = null;
         
         this.createDownloadWidget();
         this.createDownloadFrame();
         this.bindEvents();
-        this.addFileDownloadButtonStyles(); // ONLY NEW ADDITION
+        this.addFileDownloadButtonStyles();
+        this.loadJSZip();
+    }
+    
+    async loadJSZip() {
+        // Load JSZip library from CDN
+        if (typeof JSZip === 'undefined') {
+            try {
+                const script = document.createElement('script');
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+                script.onload = () => {
+                    console.log('✅ JSZip loaded successfully');
+                };
+                script.onerror = () => {
+                    console.error('❌ Failed to load JSZip');
+                };
+                document.head.appendChild(script);
+            } catch (error) {
+                console.error('Failed to load JSZip:', error);
+            }
+        }
     }
     
     detectMobile() {
@@ -55,6 +76,7 @@ class DownloadManager {
                     </div>
                     <div class="download-controls">
                         <button class="download-btn cancel-btn" id="cancelAll">Cancel All</button>
+                        <button class="download-btn zip-btn" id="createZip" style="display: none;">📦 Create ZIP</button>
                     </div>
                 </div>
             </div>
@@ -242,6 +264,8 @@ class DownloadManager {
             .download-controls {
                 display: flex;
                 justify-content: center;
+                gap: 8px;
+                flex-wrap: wrap;
             }
             
             .download-btn {
@@ -261,6 +285,20 @@ class DownloadManager {
             
             .cancel-btn:hover {
                 background: #e5e7eb;
+            }
+            
+            .zip-btn {
+                background: #059669;
+                color: white;
+            }
+            
+            .zip-btn:hover {
+                background: #047857;
+            }
+            
+            .zip-btn:disabled {
+                background: #9ca3af;
+                cursor: not-allowed;
             }
             
             .download-spinner {
@@ -286,65 +324,19 @@ class DownloadManager {
                     max-width: calc(100vw - 30px);
                 }
                 
-                .download-header {
-                    padding: 10px 12px;
+                .download-controls {
+                    flex-direction: column;
+                    align-items: stretch;
                 }
                 
-                .download-title {
-                    font-size: 13px;
-                }
-                
-                .download-list {
-                    max-height: 250px;
-                    padding: 6px;
-                }
-                
-                .download-item {
-                    padding: 6px;
-                    font-size: 12px;
-                }
-                
-                .download-summary {
-                    padding: 10px 12px;
-                }
-            }
-            
-            @media (max-width: 480px) {
-                .download-widget {
-                    bottom: 10px;
-                    right: 10px;
-                    width: 260px;
-                    max-width: calc(100vw - 20px);
-                }
-                
-                .download-widget.minimized {
-                    width: 180px;
-                }
-                
-                .download-header {
-                    padding: 8px 10px;
-                }
-                
-                .download-title {
-                    font-size: 12px;
-                }
-                
-                .download-list {
-                    max-height: 200px;
-                    padding: 4px;
-                }
-                
-                .download-item {
-                    padding: 5px;
-                    font-size: 11px;
-                    gap: 8px;
+                .download-btn {
+                    width: 100%;
                 }
             }
         `;
         document.head.appendChild(style);
     }
     
-    // NEW: Add styles for individual file download buttons
     addFileDownloadButtonStyles() {
         if (document.getElementById('fileDownloadStyles')) return;
         
@@ -382,7 +374,6 @@ class DownloadManager {
                 transform: scale(1.1);
             }
             
-            /* Mobile: Always show download buttons */
             @media (max-width: 768px) {
                 .file-download-btn {
                     opacity: 1;
@@ -402,7 +393,6 @@ class DownloadManager {
         document.head.appendChild(style);
     }
     
-    // NEW: Add download button to individual files
     addDownloadButtonToFile(fileElement, file) {
         if (file.type === 'folder') return;
         if (fileElement.querySelector('.file-download-btn')) return;
@@ -422,7 +412,254 @@ class DownloadManager {
         }
     }
     
-    // NEW: Direct download for individual file buttons
+    bindEvents() {
+        const widget = document.getElementById('downloadWidget');
+        const toggle = document.getElementById('downloadToggle');
+        const close = document.getElementById('downloadClose');
+        const cancelAll = document.getElementById('cancelAll');
+        const createZip = document.getElementById('createZip');
+        
+        // Header click to toggle
+        document.getElementById('downloadWidget').querySelector('.download-header').addEventListener('click', (e) => {
+            if (e.target === toggle || e.target === close) return;
+            this.toggleWidget();
+        });
+        
+        // Toggle button
+        toggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleWidget();
+        });
+        
+        // Close button
+        close.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.hideWidget();
+        });
+        
+        // Cancel all button
+        cancelAll.addEventListener('click', () => {
+            this.cancelAllDownloads();
+        });
+        
+        // Create ZIP button
+        createZip.addEventListener('click', () => {
+            this.createZipFromDownloads();
+        });
+    }
+    
+    createDownloadFrame() {
+        if (!this.downloadFrame) {
+            this.downloadFrame = document.createElement('iframe');
+            this.downloadFrame.id = 'downloadFrame';
+            this.downloadFrame.style.cssText = 'display: none; width: 0; height: 0; border: none;';
+            document.body.appendChild(this.downloadFrame);
+        }
+    }
+    
+    // NEW: Bulk download with ZIP creation
+    async downloadFiles(files) {
+        if (!files || files.length === 0) {
+            this.showToast('No files to download', 'warning');
+            return;
+        }
+        
+        console.log(`Starting download of ${files.length} files`);
+        
+        // If only one file, download directly
+        if (files.length === 1) {
+            this.downloadSingleFileDirectly(files[0].id, files[0].name);
+            return;
+        }
+        
+        // For multiple files, add to queue for ZIP creation
+        const queueItems = files.map(file => ({
+            id: file.id,
+            name: file.name,
+            mimeType: file.mimeType,
+            size: file.size,
+            status: 'queued',
+            progress: 0,
+            error: null,
+            retries: 0,
+            startTime: null,
+            endTime: null,
+            data: null // Will store the downloaded blob
+        }));
+        
+        this.downloadQueueData.push(...queueItems);
+        
+        // Show widget and ZIP button
+        this.showWidget();
+        this.showZipButton();
+        this.updateUI();
+        
+        // Start downloading files for ZIP
+        if (!this.isDownloading) {
+            this.downloadFilesForZip();
+        }
+        
+        this.showToast(`Preparing ${files.length} files for ZIP download...`, 'info');
+    }
+    
+    async downloadFilesForZip() {
+        if (this.isDownloading) return;
+        
+        this.isDownloading = true;
+        this.activeDownloads = 0;
+        this.completedDownloads = 0;
+        this.failedDownloads = 0;
+        
+        console.log(`Downloading files for ZIP: ${this.downloadQueueData.length} items`);
+        
+        try {
+            // Download files sequentially to avoid overwhelming the browser
+            for (let item of this.downloadQueueData) {
+                if (item.status === 'cancelled') continue;
+                
+                await this.downloadFileForZip(item);
+                
+                // Small delay between downloads
+                await this.delay(500);
+            }
+            
+            this.onDownloadsComplete();
+            
+        } catch (error) {
+            console.error('Download queue processing failed:', error);
+        } finally {
+            this.isDownloading = false;
+        }
+    }
+    
+    async downloadFileForZip(item) {
+        try {
+            item.status = 'downloading';
+            item.startTime = Date.now();
+            this.activeDownloads++;
+            this.updateUI();
+            this.updateItemUI(item);
+            
+            console.log(`Downloading file for ZIP: ${item.name}`);
+            
+            // Download file as blob
+            const downloadUrl = `https://drive.google.com/uc?export=download&id=${item.id}`;
+            const response = await fetch(downloadUrl);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const blob = await response.blob();
+            item.data = blob;
+            
+            item.status = 'completed';
+            item.endTime = Date.now();
+            item.progress = 100;
+            this.completedDownloads++;
+            this.activeDownloads--;
+            
+            console.log(`File downloaded for ZIP: ${item.name}`);
+            
+        } catch (error) {
+            console.error(`Download failed for ${item.name}:`, error);
+            
+            if (item.retries < 2) {
+                item.retries++;
+                item.status = 'retrying';
+                this.updateItemUI(item);
+                
+                await this.delay(2000 * item.retries);
+                return this.downloadFileForZip(item);
+            } else {
+                item.status = 'failed';
+                item.error = error.message || 'Download failed';
+                item.endTime = Date.now();
+                this.failedDownloads++;
+                this.activeDownloads--;
+            }
+        }
+        
+        this.updateUI();
+        this.updateItemUI(item);
+    }
+    
+    async createZipFromDownloads() {
+        if (typeof JSZip === 'undefined') {
+            this.showToast('ZIP library not loaded. Please try again.', 'error');
+            return;
+        }
+        
+        const completedFiles = this.downloadQueueData.filter(item => 
+            item.status === 'completed' && item.data
+        );
+        
+        if (completedFiles.length === 0) {
+            this.showToast('No files available for ZIP creation', 'warning');
+            return;
+        }
+        
+        try {
+            this.showToast('Creating ZIP file...', 'info');
+            
+            const zip = new JSZip();
+            const zipButton = document.getElementById('createZip');
+            
+            // Disable ZIP button and show progress
+            zipButton.disabled = true;
+            zipButton.innerHTML = '⏳ Creating ZIP...';
+            
+            // Add files to ZIP
+            for (const item of completedFiles) {
+                zip.file(item.name, item.data);
+            }
+            
+            // Generate ZIP
+            const zipBlob = await zip.generateAsync({
+                type: 'blob',
+                compression: 'DEFLATE',
+                compressionOptions: { level: 6 }
+            });
+            
+            // Create download link
+            const zipName = `files_${new Date().toISOString().split('T')[0]}.zip`;
+            const downloadLink = document.createElement('a');
+            downloadLink.href = URL.createObjectURL(zipBlob);
+            downloadLink.download = zipName;
+            downloadLink.style.display = 'none';
+            
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+            
+            // Clean up object URL
+            setTimeout(() => {
+                URL.revokeObjectURL(downloadLink.href);
+            }, 1000);
+            
+            this.showToast(`ZIP file "${zipName}" downloaded successfully!`, 'success');
+            
+            // Reset button
+            zipButton.disabled = false;
+            zipButton.innerHTML = '📦 Create ZIP';
+            
+            // Clear completed downloads after a delay
+            setTimeout(() => {
+                this.clearCompletedDownloads();
+            }, 2000);
+            
+        } catch (error) {
+            console.error('ZIP creation failed:', error);
+            this.showToast('Failed to create ZIP file', 'error');
+            
+            // Reset button
+            const zipButton = document.getElementById('createZip');
+            zipButton.disabled = false;
+            zipButton.innerHTML = '📦 Create ZIP';
+        }
+    }
+    
+    // Direct download for individual files
     downloadSingleFileDirectly(fileId, fileName) {
         console.log(`Direct download for: ${fileName}`);
         
@@ -451,207 +688,18 @@ class DownloadManager {
         }
     }
     
-    bindEvents() {
-        const widget = document.getElementById('downloadWidget');
-        const toggle = document.getElementById('downloadToggle');
-        const close = document.getElementById('downloadClose');
-        const cancelAll = document.getElementById('cancelAll');
-        
-        // Header click to toggle
-        document.getElementById('downloadWidget').querySelector('.download-header').addEventListener('click', (e) => {
-            if (e.target === toggle || e.target === close) return;
-            this.toggleWidget();
-        });
-        
-        // Toggle button
-        toggle.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.toggleWidget();
-        });
-        
-        // Close button
-        close.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.hideWidget();
-        });
-        
-        // Cancel all button
-        cancelAll.addEventListener('click', () => {
-            this.cancelAllDownloads();
-        });
-    }
-    
-    createDownloadFrame() {
-        if (!this.downloadFrame) {
-            this.downloadFrame = document.createElement('iframe');
-            this.downloadFrame.id = 'downloadFrame';
-            this.downloadFrame.style.cssText = 'display: none; width: 0; height: 0; border: none;';
-            document.body.appendChild(this.downloadFrame);
+    showZipButton() {
+        const zipButton = document.getElementById('createZip');
+        if (zipButton) {
+            zipButton.style.display = 'inline-block';
         }
     }
     
-    async downloadFiles(files) {
-        if (!files || files.length === 0) {
-            this.showToast('No files to download', 'warning');
-            return;
+    hideZipButton() {
+        const zipButton = document.getElementById('createZip');
+        if (zipButton) {
+            zipButton.style.display = 'none';
         }
-        
-        console.log(`Starting download of ${files.length} files`);
-        
-        // Add files to queue
-        const queueItems = files.map(file => ({
-            id: file.id,
-            name: file.name,
-            mimeType: file.mimeType,
-            size: file.size,
-            status: 'queued',
-            progress: 0,
-            error: null,
-            retries: 0,
-            startTime: null,
-            endTime: null
-        }));
-        
-        this.downloadQueueData.push(...queueItems);
-        
-        // Show widget
-        this.showWidget();
-        this.updateUI();
-        
-        // Start processing
-        if (!this.isDownloading) {
-            this.processDownloadQueue();
-        }
-        
-        this.showToast(files.length === 1 ? 'Download started' : `Started downloading ${files.length} files`, 'success');
-    }
-    
-    async processDownloadQueue() {
-        if (this.isDownloading) return;
-        
-        this.isDownloading = true;
-        this.activeDownloads = 0;
-        this.completedDownloads = 0;
-        this.failedDownloads = 0;
-        
-        console.log(`Processing download queue: ${this.downloadQueueData.length} items`);
-        
-        try {
-            for (let i = 0; i < this.downloadQueueData.length; i++) {
-                const item = this.downloadQueueData[i];
-                
-                if (item.status === 'cancelled') continue;
-                
-                await this.downloadSingleFile(item);
-                
-                // Add delay between downloads
-                if (i < this.downloadQueueData.length - 1) {
-                    await this.delay(1000);
-                }
-            }
-            
-            this.onDownloadsComplete();
-            
-        } catch (error) {
-            console.error('Download queue processing failed:', error);
-        } finally {
-            this.isDownloading = false;
-        }
-    }
-    
-    async downloadSingleFile(item) {
-        try {
-            item.status = 'downloading';
-            item.startTime = Date.now();
-            this.activeDownloads++;
-            this.updateUI();
-            this.updateItemUI(item);
-            
-            console.log(`Downloading file: ${item.name}`);
-            
-            const downloadUrl = this.isMobile ? 
-                `https://drive.google.com/uc?export=download&id=${item.id}&confirm=t` :
-                `https://drive.google.com/uc?export=download&id=${item.id}`;
-            
-            if (this.isMobile) {
-                const link = document.createElement('a');
-                link.href = downloadUrl;
-                link.download = item.name;
-                link.style.display = 'none';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-            } else {
-                await this.downloadWithIframe(downloadUrl, item.name);
-            }
-            
-            item.status = 'completed';
-            item.endTime = Date.now();
-            item.progress = 100;
-            this.completedDownloads++;
-            this.activeDownloads--;
-            
-            console.log(`File downloaded successfully: ${item.name}`);
-            
-        } catch (error) {
-            console.error(`Download failed for ${item.name}:`, error);
-            
-            if (item.retries < 3) {
-                item.retries++;
-                item.status = 'retrying';
-                this.updateItemUI(item);
-                
-                await this.delay(2000 * item.retries);
-                return this.downloadSingleFile(item);
-            } else {
-                item.status = 'failed';
-                item.error = error.message || 'Download failed';
-                item.endTime = Date.now();
-                this.failedDownloads++;
-                this.activeDownloads--;
-            }
-        }
-        
-        this.updateUI();
-        this.updateItemUI(item);
-    }
-    
-    downloadWithDirectLink(url, filename) {
-        return new Promise((resolve) => {
-            const downloadIframe = document.createElement('iframe');
-            downloadIframe.style.cssText = 'display: none; width: 0; height: 0;';
-            downloadIframe.src = url;
-            
-            document.body.appendChild(downloadIframe);
-            
-            setTimeout(() => {
-                document.body.removeChild(downloadIframe);
-                resolve();
-            }, 2000);
-        });
-    }
-    
-    downloadWithIframe(url, filename) {
-        return new Promise((resolve, reject) => {
-            try {
-                this.downloadFrame.src = url;
-                
-                setTimeout(resolve, 1000);
-                
-                const errorHandler = () => {
-                    reject(new Error('Download request failed'));
-                };
-                
-                this.downloadFrame.addEventListener('error', errorHandler, { once: true });
-                
-                setTimeout(() => {
-                    this.downloadFrame.removeEventListener('error', errorHandler);
-                }, 5000);
-                
-            } catch (error) {
-                reject(error);
-            }
-        });
     }
     
     showWidget() {
@@ -665,6 +713,7 @@ class DownloadManager {
         const widget = document.getElementById('downloadWidget');
         if (widget && !this.isDownloading) {
             widget.classList.add('hidden');
+            this.hideZipButton();
             setTimeout(() => this.clearCompletedDownloads(), 1000);
         }
     }
@@ -776,13 +825,13 @@ class DownloadManager {
     
     getStatusText(item) {
         switch (item.status) {
-            case 'queued': return 'Queued';
+            case 'queued': return 'Queued for ZIP';
             case 'downloading': return 'Downloading...';
-            case 'retrying': return `Retrying... (${item.retries}/3)`;
+            case 'retrying': return `Retrying... (${item.retries}/2)`;
             case 'completed':
                 const duration = item.endTime && item.startTime ? 
                     ` in ${((item.endTime - item.startTime) / 1000).toFixed(1)}s` : '';
-                return `Downloaded${duration}`;
+                return `Ready for ZIP${duration}`;
             case 'failed': return `Failed${item.error ? `: ${item.error}` : ''}`;
             case 'cancelled': return 'Cancelled';
             default: return 'Unknown';
@@ -816,8 +865,12 @@ class DownloadManager {
             failed: this.failedDownloads
         });
         
-        if (this.failedDownloads === 0) {
-            this.showToast('All downloads completed successfully!', 'success');
+        const hasCompletedFiles = this.downloadQueueData.some(item => 
+            item.status === 'completed' && item.data
+        );
+        
+        if (hasCompletedFiles) {
+            this.showToast('Files ready! Click "Create ZIP" to download all files.', 'success');
         } else {
             this.showToast(`Downloads completed with ${this.failedDownloads} failures`, 'warning');
         }
@@ -836,6 +889,7 @@ class DownloadManager {
         this.failedDownloads = 0;
         
         if (this.downloadQueueData.length === 0) {
+            this.hideZipButton();
             this.updateUI();
         }
     }
