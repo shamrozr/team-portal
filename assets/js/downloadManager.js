@@ -321,25 +321,7 @@ class DownloadManager {
     downloadSingleFile(file) {
         console.log(`🎯 Method 1: Direct download for single file: ${file.name}`);
         
-        // Check if it's a video file that needs special handling
-        const isVideo = this.isVideoFile(file);
-        
-        if (isVideo) {
-            // For videos - open Google Drive page (this was working before)
-            try {
-                const driveUrl = `https://drive.google.com/file/d/${file.id}/view?usp=sharing`;
-                window.open(driveUrl, '_blank');
-                Utils.showSuccess(`Opening video: ${file.name}`);
-                console.log(`Video opened in Google Drive: ${driveUrl}`);
-                return;
-            } catch (error) {
-                console.error('Failed to open video:', error);
-                Utils.showError(`Failed to open video: ${file.name}`);
-                return;
-            }
-        }
-        
-        // For ALL OTHER files - keep original working code exactly the same
+        // Use the standard direct download URL for ALL files (including videos)
         const downloadUrl = `https://drive.google.com/uc?export=download&id=${file.id}`;
         
         try {
@@ -362,7 +344,7 @@ class DownloadManager {
         console.log(`🎥 Special video download for: ${file.name}`);
         
         // Your Google Apps Script proxy URL for video downloads
-        const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbxLU3QKoU_Ublngo1bD6RJMG4bmkE27AkyvGj-P6nFywlWTsyc0pX68nKHhEqehv83P/exec';
+        const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbxtL7OLjxf_wprAfMczlxXA72lOVl2ajTdgHA6whd9lgP01nH1sdFDatKno83wThGW3/exec';
         
         try {
             // Use Google Apps Script proxy for video downloads
@@ -491,16 +473,24 @@ class DownloadManager {
             
             console.log(`Downloading file ${index + 1}/${this.downloadQueueData.length}: ${item.name}`);
             
-            // For ZIP downloads, if it's a video, warn user about potential issues
+            // Skip videos completely for ZIP downloads to avoid corruption
             if (this.isVideoFile(item)) {
-                console.warn(`Video file ${item.name} may have issues in ZIP download due to Google Drive limitations`);
+                console.log(`Skipping video file: ${item.name} (would be corrupted in ZIP)`);
+                item.status = 'skipped';
+                item.error = 'Videos skipped (would be corrupted)';
+                this.zipProgress.downloaded++; // Count as processed
+                this.updateProgressSection(
+                    `Skipped video ${this.zipProgress.downloaded}/${this.zipProgress.total}...`,
+                    this.zipProgress.downloaded,
+                    this.zipProgress.total
+                );
+                this.updateDownloadList();
+                return;
             }
             
-            // For ZIP downloads, use fetch method to get proper file data
+            // For non-video files, use fetch method to get proper file data
             const urls = this.getDirectDownloadURL(item.id);
             let success = false;
-            let bestBlob = null;
-            let bestSize = 0;
             
             for (let i = 0; i < urls.length && !success; i++) {
                 try {
@@ -518,10 +508,8 @@ class DownloadManager {
                         const blob = await response.blob();
                         console.log(`URL ${i + 1} returned ${blob.size} bytes for ${item.name}`);
                         
-                        // For videos, we need substantial file size (> 1MB), for others > 1KB is OK
-                        const minSize = this.isVideoFile(item) ? 1024 * 1024 : 1000;
-                        
-                        if (blob.size > minSize) {
+                        // For non-videos, accept any reasonable file size
+                        if (blob.size > 100) {
                             this.zip.file(item.name, blob);
                             
                             item.status = 'completed';
@@ -535,11 +523,8 @@ class DownloadManager {
                                 this.zipProgress.downloaded,
                                 this.zipProgress.total
                             );
-                        } else if (blob.size > bestSize) {
-                            // Keep track of the largest file we got (might be useful as fallback)
-                            bestBlob = blob;
-                            bestSize = blob.size;
-                            console.warn(`File ${item.name} size ${blob.size} bytes too small, continuing...`);
+                        } else {
+                            console.warn(`File ${item.name} size ${blob.size} bytes too small, trying next URL...`);
                         }
                     } else {
                         console.warn(`URL ${i + 1} failed with status: ${response.status}`);
@@ -549,14 +534,7 @@ class DownloadManager {
                 }
             }
             
-            // If no URL worked but we have a best attempt, use it with a warning
-            if (!success && bestBlob && bestSize > 100) {
-                console.warn(`Using best available version of ${item.name} (${bestSize} bytes) - may be incomplete`);
-                this.zip.file(item.name, bestBlob);
-                item.status = 'completed';
-                item.warning = `File may be incomplete (${bestSize} bytes)`;
-                this.zipProgress.downloaded++;
-            } else if (!success) {
+            if (!success) {
                 throw new Error('All URLs failed or returned files too small');
             }
             
