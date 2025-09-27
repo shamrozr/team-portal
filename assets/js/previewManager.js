@@ -1,4 +1,4 @@
-// assets/js/previewManager.js - Mobile-optimized preview manager
+// assets/js/previewManager.js - Fixed download button functionality
 
 class PreviewManager {
     constructor() {
@@ -60,7 +60,7 @@ class PreviewManager {
         document.getElementById('prevBtn').onclick = () => this.showPreviousFile();
         document.getElementById('nextBtn').onclick = () => this.showNextFile();
         
-        // Download button
+        // Download button - USE SAME FUNCTIONALITY AS OUTSIDE BUTTONS
         document.getElementById('downloadFromPreview').onclick = () => this.downloadCurrentFile();
         
         // Overlay click to close
@@ -384,78 +384,78 @@ class PreviewManager {
     }
     
     async loadImagePreview(file, container) {
-    // Try multiple image URL formats for better mobile compatibility
-    const imageUrls = [
-        `https://lh3.googleusercontent.com/d/${file.id}`,
-        `https://drive.google.com/uc?export=view&id=${file.id}`,
-        `https://drive.google.com/uc?id=${file.id}`
-    ];
-    
-    let imageLoaded = false;
-    
-    for (const imageUrl of imageUrls) {
-        if (imageLoaded) break;
+        // Try multiple image URL formats for better mobile compatibility
+        const imageUrls = [
+            `https://lh3.googleusercontent.com/d/${file.id}`,
+            `https://drive.google.com/uc?export=view&id=${file.id}`,
+            `https://drive.google.com/uc?id=${file.id}`
+        ];
         
-        try {
-            await new Promise((resolve, reject) => {
-                const img = new Image();
-                img.onload = () => {
-                    container.innerHTML = `<img src="${imageUrl}" class="preview-image" alt="${file.name}">`;
-                    imageLoaded = true;
-                    resolve();
-                };
-                img.onerror = reject;
-                img.src = imageUrl;
-                
-                // Timeout after 3 seconds
-                setTimeout(reject, 3000);
-            });
-        } catch (error) {
-            continue; // Try next URL
+        let imageLoaded = false;
+        
+        for (const imageUrl of imageUrls) {
+            if (imageLoaded) break;
+            
+            try {
+                await new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        container.innerHTML = `<img src="${imageUrl}" class="preview-image" alt="${file.name}">`;
+                        imageLoaded = true;
+                        resolve();
+                    };
+                    img.onerror = reject;
+                    img.src = imageUrl;
+                    
+                    // Timeout after 3 seconds
+                    setTimeout(reject, 3000);
+                });
+            } catch (error) {
+                continue; // Try next URL
+            }
+        }
+        
+        // If no image URL worked, fallback to iframe
+        if (!imageLoaded) {
+            container.innerHTML = `<iframe src="https://drive.google.com/file/d/${file.id}/preview" class="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>`;
         }
     }
     
-    // If no image URL worked, fallback to iframe
-    if (!imageLoaded) {
-        container.innerHTML = `<iframe src="https://drive.google.com/file/d/${file.id}/preview" class="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>`;
-    }
-}
-    
     loadVideoPreview(file, container) {
-    container.innerHTML = `<iframe src="https://drive.google.com/file/d/${file.id}/preview" class="preview-iframe" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-popups"></iframe>`;
-}
+        container.innerHTML = `<iframe src="https://drive.google.com/file/d/${file.id}/preview" class="preview-iframe" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-popups"></iframe>`;
+    }
 
-loadPDFPreview(file, container) {
-    // Use different URL for mobile
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    const previewUrl = isMobile ? 
-        `https://drive.google.com/file/d/${file.id}/view` :
-        `https://drive.google.com/file/d/${file.id}/preview`;
-        
-    container.innerHTML = `<iframe src="${previewUrl}" class="preview-iframe" sandbox="allow-scripts allow-same-origin allow-popups"></iframe>`;
-}
+    loadPDFPreview(file, container) {
+        // Use different URL for mobile
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const previewUrl = isMobile ? 
+            `https://drive.google.com/file/d/${file.id}/view` :
+            `https://drive.google.com/file/d/${file.id}/preview`;
+            
+        container.innerHTML = `<iframe src="${previewUrl}" class="preview-iframe" sandbox="allow-scripts allow-same-origin allow-popups"></iframe>`;
+    }
     
     loadDocumentPreview(file, container) {
         container.innerHTML = `<iframe src="https://docs.google.com/viewer?url=https://drive.google.com/uc?id=${file.id}&embedded=true" class="preview-iframe"></iframe>`;
     }
     
     showPreviewError(file, container) {
-    container.innerHTML = `
-        <div class="preview-error">
-            <div class="preview-error-icon">📄</div>
-            <h3>Preview not available</h3>
-            <p>Unable to load preview for ${file.name}</p>
-            <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-                <button class="preview-btn" onclick="window.App.downloadManager.downloadSingleFile('${file.id}', '${file.name}')">
-                    📥 Download File
-                </button>
-                <button class="preview-btn" onclick="window.open('https://drive.google.com/file/d/${file.id}/view', '_blank')">
-                    🔗 Open in Drive
-                </button>
+        container.innerHTML = `
+            <div class="preview-error">
+                <div class="preview-error-icon">📄</div>
+                <h3>Preview not available</h3>
+                <p>Unable to load preview for ${file.name}</p>
+                <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                    <button class="preview-btn" onclick="window.App.previewManager.downloadCurrentFile()">
+                        📥 Download File
+                    </button>
+                    <button class="preview-btn" onclick="window.open('https://drive.google.com/file/d/${file.id}/view', '_blank')">
+                        🔗 Open in Drive
+                    </button>
+                </div>
             </div>
-        </div>
-    `;
-}
+        `;
+    }
     
     isDocumentType(mimeType) {
         const documentTypes = [
@@ -485,12 +485,21 @@ loadPDFPreview(file, container) {
         }
     }
     
+    // ✅ FIXED: Download button now uses same functionality as outside buttons
     downloadCurrentFile() {
-    if (this.currentFile && window.App?.downloadManager) {
-        // Use the new individual download method instead of the old downloadFiles method
-        window.App.downloadManager.downloadSingleFile(this.currentFile.id, this.currentFile.name);
+        if (this.currentFile && window.App?.downloadManager) {
+            console.log(`🎯 Preview download: ${this.currentFile.name}`);
+            
+            // Use the same downloadSingleFile method as the outside buttons
+            window.App.downloadManager.downloadSingleFile(this.currentFile);
+            
+            // Optionally close preview after download starts
+            // this.hidePreview();
+        } else {
+            console.error('Download manager not available or no current file');
+            Utils.showError('Download not available');
+        }
     }
-}
 }
 
 // Export for modules
