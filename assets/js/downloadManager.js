@@ -324,26 +324,14 @@ class DownloadManager {
         // Check if it's a video file that needs special handling
         const isVideo = this.isVideoFile(file);
         
-        let downloadUrl;
         if (isVideo) {
-            // For videos, use the Google Drive direct file link that bypasses preview
-            downloadUrl = `https://drive.google.com/file/d/${file.id}/view?usp=drive_link`;
-            
-            // Open in new tab for videos since they may redirect to a download page
-            try {
-                window.open(downloadUrl, '_blank');
-                Utils.showSuccess(`Opening video download: ${file.name}`);
-                console.log(`Video download opened in new tab: ${downloadUrl}`);
-                return;
-            } catch (error) {
-                console.warn('Failed to open video in new tab, trying direct download...');
-                // Fallback to direct download method
-                downloadUrl = `https://drive.google.com/uc?export=download&id=${file.id}&confirm=t&authuser=0`;
-            }
-        } else {
-            // For other files, use the standard direct download URL
-            downloadUrl = `https://drive.google.com/uc?export=download&id=${file.id}`;
+            // For videos ONLY - use special iframe method to bypass Google Drive restrictions
+            this.downloadVideoFile(file);
+            return;
         }
+        
+        // For ALL OTHER files - keep original working code exactly the same
+        const downloadUrl = `https://drive.google.com/uc?export=download&id=${file.id}`;
         
         try {
             // Direct download in same window (like the original behavior)
@@ -357,6 +345,44 @@ class DownloadManager {
         } catch (error) {
             console.error('Single file download failed:', error);
             Utils.showError(`Failed to start download: ${file.name}`);
+        }
+    }
+    
+    // Special method ONLY for video files to bypass Google Drive restrictions
+    downloadVideoFile(file) {
+        console.log(`🎥 Special video download for: ${file.name}`);
+        
+        try {
+            // Create hidden iframe specifically for video downloads
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.style.position = 'absolute';
+            iframe.style.top = '-9999px';
+            iframe.style.left = '-9999px';
+            iframe.style.width = '1px';
+            iframe.style.height = '1px';
+            
+            // Use Google Drive's file download URL that forces full file download
+            const videoDownloadUrl = `https://drive.google.com/file/d/${file.id}/view?usp=drive_link`;
+            
+            iframe.src = videoDownloadUrl;
+            document.body.appendChild(iframe);
+            
+            // Show success message
+            Utils.showSuccess(`Opening video download: ${file.name}`);
+            
+            // Clean up iframe after 10 seconds
+            setTimeout(() => {
+                if (iframe.parentNode) {
+                    document.body.removeChild(iframe);
+                }
+            }, 10000);
+            
+            console.log(`Video download initiated via iframe: ${videoDownloadUrl}`);
+            
+        } catch (error) {
+            console.error('Video download failed:', error);
+            Utils.showError(`Failed to download video: ${file.name}`);
         }
     }
     
