@@ -1,508 +1,645 @@
-// assets/js/previewManager.js - Fixed download button functionality
+// assets/js/fileManager.js - Updated with bulk download support via ZIP
 
-class PreviewManager {
+class FileManager {
     constructor() {
-        this.currentFile = null;
-        this.currentFiles = [];
-        this.currentIndex = 0;
-        this.setupModal();
-        this.setupKeyboardNavigation();
-    }
-    
-    setupModal() {
-        // Remove existing modal if it exists
-        const existingModal = document.getElementById('previewModal');
-        if (existingModal) {
-            existingModal.remove();
-        }
+        this.driveData = null;
+        this.currentPath = '/';
+        this.currentFolder = null;
+        this.selectedFiles = new Set();
+        this.navigationHistory = [];
+        this.historyIndex = -1;
+        this.viewMode = 'grid'; // 'grid' or 'list'
+        this.searchTerm = '';
         
-        const modal = document.createElement('div');
-        modal.id = 'previewModal';
-        modal.className = 'preview-modal hidden';
-        modal.innerHTML = `
-            <div class="preview-overlay"></div>
-            <div class="preview-container">
-                <div class="preview-header">
-                    <div class="preview-title" id="previewTitle">Loading...</div>
-                    <div class="preview-controls">
-                        <button class="preview-btn" id="downloadFromPreview">📥 Download</button>
-                        <button class="preview-btn close-btn" id="closePreview">×</button>
-                    </div>
-                </div>
-                <div class="preview-content" id="previewContent">
-                    <div class="preview-loading">
-                        <div class="spinner"></div>
-                        <span>Loading preview...</span>
-                    </div>
-                </div>
-                <div class="preview-navigation">
-                    <button class="nav-btn prev-btn" id="prevBtn" title="Previous file">‹</button>
-                    <div class="preview-counter">
-                        <span id="currentFileIndex">1</span> of <span id="totalFiles">1</span>
-                    </div>
-                    <button class="nav-btn next-btn" id="nextBtn" title="Next file">›</button>
-                </div>
-            </div>
-        `;
+        // DOM elements
+        this.fileGrid = Utils.dom.select('#fileGrid');
+        this.breadcrumb = Utils.dom.select('#breadcrumb');
+        this.emptyState = Utils.dom.select('#emptyState');
+        this.folderActions = Utils.dom.select('#folderActions');
+        this.selectedCount = Utils.dom.select('#selectedCount');
+        this.selectedNumber = Utils.dom.select('#selectedNumber');
+        this.downloadSelected = Utils.dom.select('#downloadSelected');
         
-        this.addStyles();
-        document.body.appendChild(modal);
+        // Action buttons
+        this.selectAllButton = Utils.dom.select('#selectAllButton');
+        this.deselectAllButton = Utils.dom.select('#deselectAllButton');
+        this.backButton = Utils.dom.select('#backButton');
+        this.forwardButton = Utils.dom.select('#forwardButton');
+        this.gridViewButton = Utils.dom.select('#gridViewButton');
+        this.listViewButton = Utils.dom.select('#listViewButton');
+        
         this.bindEvents();
+        this.loadUserPreferences();
     }
     
-    bindEvents() {
-        const modal = document.getElementById('previewModal');
-        
-        // Close button
-        document.getElementById('closePreview').onclick = () => this.hidePreview();
-        
-        // Navigation buttons
-        document.getElementById('prevBtn').onclick = () => this.showPreviousFile();
-        document.getElementById('nextBtn').onclick = () => this.showNextFile();
-        
-        // Download button - USE SAME FUNCTIONALITY AS OUTSIDE BUTTONS
-        document.getElementById('downloadFromPreview').onclick = () => this.downloadCurrentFile();
-        
-        // Overlay click to close
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal || e.target.classList.contains('preview-overlay')) {
-                this.hidePreview();
-            }
-        });
-    }
-    
-    addStyles() {
-        if (document.getElementById('previewStyles')) return;
-        
-        const style = document.createElement('style');
-        style.id = 'previewStyles';
-        style.textContent = `
-            .preview-modal {
-                position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-                z-index: 10000; background: rgba(0,0,0,0.95);
-                animation: fadeIn 0.3s ease-in-out;
-            }
-            .preview-modal.hidden { display: none; }
-            
-            .preview-overlay {
-                position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-            }
-            
-            .preview-container {
-                position: relative; width: 100%; height: 100%;
-                display: flex; flex-direction: column;
-            }
-            
-            .preview-header {
-                padding: 15px 20px; display: flex; justify-content: space-between;
-                align-items: center; background: rgba(0,0,0,0.9); color: white;
-                border-bottom: 1px solid rgba(255,255,255,0.1);
-            }
-            
-            .preview-title { 
-                font-size: 16px; font-weight: 500; 
-                white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-                max-width: 60%;
-            }
-            
-            .preview-controls { 
-                display: flex; gap: 10px; align-items: center;
-            }
-            
-            .preview-btn {
-                padding: 8px 12px; background: rgba(255,255,255,0.15);
-                color: white; border: none; border-radius: 6px;
-                cursor: pointer; transition: background 0.2s;
-                font-size: 14px; font-weight: 500;
-            }
-            .preview-btn:hover { background: rgba(255,255,255,0.25); }
-            
-            .close-btn {
-                width: 36px; height: 36px; padding: 0;
-                font-size: 20px; font-weight: bold;
-                display: flex; align-items: center; justify-content: center;
-            }
-            
-            .preview-content {
-                flex: 1; display: flex; align-items: center;
-                justify-content: center; padding: 20px; overflow: hidden;
-                position: relative;
-            }
-            
-            .preview-image { 
-                max-width: 100%; max-height: 100%; object-fit: contain;
-                border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-            }
-            
-            .preview-iframe { 
-                width: 100%; height: 100%; border: none; 
-                border-radius: 8px; background: white;
-                box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-            }
-            
-            .preview-navigation {
-                padding: 15px 20px; display: flex; justify-content: space-between;
-                align-items: center; background: rgba(0,0,0,0.9); color: white;
-                border-top: 1px solid rgba(255,255,255,0.1);
-            }
-            
-            .nav-btn {
-                width: 44px; height: 44px; border-radius: 50%;
-                background: rgba(255,255,255,0.15); color: white;
-                border: none; font-size: 20px; cursor: pointer;
-                transition: all 0.2s; font-weight: bold;
-                display: flex; align-items: center; justify-content: center;
-            }
-            .nav-btn:hover:not(:disabled) { 
-                background: rgba(255,255,255,0.25); 
-                transform: scale(1.05);
-            }
-            .nav-btn:disabled { 
-                opacity: 0.3; cursor: not-allowed; 
-                background: rgba(255,255,255,0.05);
-            }
-            
-            .preview-counter { 
-                font-size: 15px; font-weight: 500;
-                background: rgba(255,255,255,0.1);
-                padding: 8px 16px; border-radius: 20px;
-            }
-            
-            .preview-loading {
-                display: flex; flex-direction: column; align-items: center;
-                gap: 20px; color: white; text-align: center;
-            }
-            
-            .preview-loading h3 {
-                margin: 0; font-size: 18px; color: white;
-            }
-            
-            .preview-loading p {
-                margin: 10px 0; color: rgba(255,255,255,0.8);
-            }
-            
-            .spinner {
-                width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.3);
-                border-top: 3px solid white; border-radius: 50%;
-                animation: spin 1s linear infinite;
-            }
-            
-            .preview-error {
-                display: flex; flex-direction: column; align-items: center;
-                gap: 20px; color: white; text-align: center; padding: 40px;
-            }
-            
-            .preview-error-icon {
-                font-size: 48px; opacity: 0.7;
-            }
-            
-            @keyframes spin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
-            }
-            
-            /* Mobile optimizations */
-            @media (max-width: 768px) {
-                .preview-header {
-                    padding: 12px 15px;
-                }
-                
-                .preview-title {
-                    font-size: 14px; max-width: 50%;
-                }
-                
-                .preview-btn {
-                    padding: 6px 10px; font-size: 12px;
-                }
-                
-                .preview-content {
-                    padding: 15px;
-                }
-                
-                .preview-navigation {
-                    padding: 12px 15px;
-                }
-                
-                .nav-btn {
-                    width: 40px; height: 40px; font-size: 18px;
-                }
-                
-                .preview-counter {
-                    font-size: 13px; padding: 6px 12px;
-                }
-            }
-            
-            @media (max-width: 480px) {
-                .preview-header {
-                    flex-direction: column; gap: 10px; align-items: stretch;
-                }
-                
-                .preview-title {
-                    max-width: 100%; text-align: center;
-                }
-                
-                .preview-controls {
-                    justify-content: center;
-                }
-                
-                .preview-content {
-                    padding: 10px;
-                }
-                
-                .nav-btn {
-                    width: 36px; height: 36px; font-size: 16px;
-                }
-            }
-        `;
-        document.head.appendChild(style);
-    }
-    
-    setupKeyboardNavigation() {
-        document.addEventListener('keydown', (e) => {
-            if (this.isPreviewVisible()) {
-                switch(e.key) {
-                    case 'Escape':
-                        this.hidePreview();
-                        break;
-                    case 'ArrowLeft':
-                        this.showPreviousFile();
-                        break;
-                    case 'ArrowRight':
-                        this.showNextFile();
-                        break;
-                    case ' ':
-                    case 'Enter':
-                        this.downloadCurrentFile();
-                        break;
-                }
-                e.preventDefault();
-            }
-        });
-    }
-    
-    showPreview(file, allFiles = []) {
-        if (!file) {
-            console.warn('No file provided for preview');
+    async init() {
+        if (!window.App?.auth?.isUserAuthenticated()) {
+            Config.log('warn', 'User not authenticated, cannot initialize file manager');
             return;
         }
         
-        this.currentFile = file;
-        this.currentFiles = Array.isArray(allFiles) ? allFiles.filter(f => f.type === 'file') : [file];
-        this.currentIndex = this.currentFiles.findIndex(f => f.id === file.id);
-        
-        if (this.currentIndex === -1) {
-            this.currentIndex = 0;
-        }
-        
-        this.showPreviewModal();
-        this.loadCurrentPreview();
-    }
-    
-    showPreviewModal() {
-        const modal = document.getElementById('previewModal');
-        if (modal) {
-            modal.classList.remove('hidden');
-            document.body.style.overflow = 'hidden';
-        }
-    }
-    
-    hidePreview() {
-        const modal = document.getElementById('previewModal');
-        if (modal) {
-            modal.classList.add('hidden');
-            document.body.style.overflow = '';
-        }
-        
-        this.currentFile = null;
-        this.currentFiles = [];
-        this.currentIndex = 0;
-    }
-    
-    isPreviewVisible() {
-        const modal = document.getElementById('previewModal');
-        return modal && !modal.classList.contains('hidden');
-    }
-    
-    async loadCurrentPreview() {
-        const currentFile = this.currentFiles[this.currentIndex];
-        if (!currentFile) return;
-        
-        this.currentFile = currentFile;
-        
-        // Update UI elements
-        this.updatePreviewUI();
-        
-        const content = document.getElementById('previewContent');
-        if (!content) return;
-        
-        // Show loading state
-        content.innerHTML = `
-            <div class="preview-loading">
-                <div class="spinner"></div>
-                <span>Loading preview...</span>
-            </div>
-        `;
-        
         try {
-            await this.loadPreviewContent(currentFile, content);
+            Config.log('info', 'Initializing file manager...');
+            
+            // Load drive data
+            await this.loadDriveData();
+            
+            // Navigate to saved or root path
+            const savedPath = Utils.storage.get(Config.STORAGE_KEYS.LAST_PATH) || '/';
+            await this.navigateToPath(savedPath);
+            
+            Config.log('info', 'File manager initialized successfully');
+            
         } catch (error) {
-            console.error('Preview failed:', error);
-            this.showPreviewError(currentFile, content);
+            Config.log('error', 'Failed to initialize file manager:', error);
+            Utils.showError('Failed to load file system. Please refresh the page.');
         }
     }
     
-    updatePreviewUI() {
-        const title = document.getElementById('previewTitle');
-        const currentIndex = document.getElementById('currentFileIndex');
-        const totalFiles = document.getElementById('totalFiles');
-        const prevBtn = document.getElementById('prevBtn');
-        const nextBtn = document.getElementById('nextBtn');
-        
-        if (title) title.textContent = this.currentFile.name;
-        if (currentIndex) currentIndex.textContent = this.currentIndex + 1;
-        if (totalFiles) totalFiles.textContent = this.currentFiles.length;
-        
-        if (prevBtn) prevBtn.disabled = this.currentIndex === 0;
-        if (nextBtn) nextBtn.disabled = this.currentIndex === this.currentFiles.length - 1;
-    }
-    
-    async loadPreviewContent(file, container) {
-        const extension = file.name.split('.').pop().toLowerCase();
-        const mimeType = file.mimeType || '';
-        
-        if (mimeType.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(extension)) {
-            await this.loadImagePreview(file, container);
-        } else if (mimeType.startsWith('video/') || ['mp4', 'webm', 'mov'].includes(extension)) {
-            this.loadVideoPreview(file, container);
-        } else if (mimeType === 'application/pdf' || extension === 'pdf') {
-            this.loadPDFPreview(file, container);
-        } else if (this.isDocumentType(mimeType) || ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt'].includes(extension)) {
-            this.loadDocumentPreview(file, container);
-        } else {
-            throw new Error('Unsupported file type for preview');
-        }
-    }
-    
-    async loadImagePreview(file, container) {
-        // Try multiple image URL formats for better mobile compatibility
-        const imageUrls = [
-            `https://lh3.googleusercontent.com/d/${file.id}`,
-            `https://drive.google.com/uc?export=view&id=${file.id}`,
-            `https://drive.google.com/uc?id=${file.id}`
-        ];
-        
-        let imageLoaded = false;
-        
-        for (const imageUrl of imageUrls) {
-            if (imageLoaded) break;
+    async loadDriveData() {
+        try {
+            this.driveData = await Utils.fetchJSON(Config.DRIVE_DATA_PATH);
+            Config.log('debug', 'Drive data loaded:', this.driveData);
             
-            try {
-                await new Promise((resolve, reject) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        container.innerHTML = `<img src="${imageUrl}" class="preview-image" alt="${file.name}">`;
-                        imageLoaded = true;
-                        resolve();
-                    };
-                    img.onerror = reject;
-                    img.src = imageUrl;
-                    
-                    // Timeout after 3 seconds
-                    setTimeout(reject, 3000);
-                });
-            } catch (error) {
-                continue; // Try next URL
+            if (!this.driveData) {
+                throw new Error('Drive data is empty or invalid');
             }
+            
+        } catch (error) {
+            Config.log('error', 'Failed to load drive data:', error);
+            throw new Error('Failed to load file system data');
+        }
+    }
+    
+    bindEvents() {
+        // Selection buttons
+        if (this.selectAllButton) {
+            this.selectAllButton.addEventListener('click', () => {
+                this.selectAllFiles();
+            });
         }
         
-        // If no image URL worked, fallback to iframe
-        if (!imageLoaded) {
-            container.innerHTML = `<iframe src="https://drive.google.com/file/d/${file.id}/preview" class="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>`;
+        if (this.deselectAllButton) {
+            this.deselectAllButton.addEventListener('click', () => {
+                this.deselectAllFiles();
+            });
+        }
+        
+        // Navigation buttons
+        if (this.backButton) {
+            this.backButton.addEventListener('click', () => {
+                this.navigateBack();
+            });
+        }
+        
+        if (this.forwardButton) {
+            this.forwardButton.addEventListener('click', () => {
+                this.navigateForward();
+            });
+        }
+        
+        // View mode buttons
+        if (this.gridViewButton) {
+            this.gridViewButton.addEventListener('click', () => {
+                this.setViewMode('grid');
+            });
+        }
+        
+        if (this.listViewButton) {
+            this.listViewButton.addEventListener('click', () => {
+                this.setViewMode('list');
+            });
+        }
+        
+        // Download selected files
+        if (this.downloadSelected) {
+            this.downloadSelected.addEventListener('click', () => {
+                this.downloadSelectedFiles();
+            });
+        }
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            this.handleKeyboard(e);
+        });
+        
+        // Breadcrumb navigation
+        if (this.breadcrumb) {
+            this.breadcrumb.addEventListener('click', (e) => {
+                if (e.target.classList.contains('breadcrumb-item') && e.target.dataset.path) {
+                    this.navigateToPath(e.target.dataset.path);
+                }
+            });
         }
     }
     
-    loadVideoPreview(file, container) {
-        container.innerHTML = `<iframe src="https://drive.google.com/file/d/${file.id}/preview" class="preview-iframe" allow="autoplay; encrypted-media" sandbox="allow-scripts allow-same-origin allow-popups"></iframe>`;
-    }
-
-    loadPDFPreview(file, container) {
-        // Use different URL for mobile
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        const previewUrl = isMobile ? 
-            `https://drive.google.com/file/d/${file.id}/view` :
-            `https://drive.google.com/file/d/${file.id}/preview`;
+    async navigateToPath(path) {
+        try {
+            Config.log('debug', `Navigating to path: ${path}`);
             
-        container.innerHTML = `<iframe src="${previewUrl}" class="preview-iframe" sandbox="allow-scripts allow-same-origin allow-popups"></iframe>`;
+            const folder = this.findFolderByPath(path);
+            if (!folder) {
+                Config.log('warn', `Folder not found for path: ${path}`);
+                path = '/'; // Fallback to root
+                folder = this.driveData;
+            }
+            
+            this.currentPath = path;
+            this.currentFolder = folder;
+            
+            // Add to navigation history
+            this.addToHistory(path);
+            
+            // Save current path
+            Utils.storage.set(Config.STORAGE_KEYS.LAST_PATH, path);
+            
+            // Update UI
+            this.updateBreadcrumb();
+            this.renderFiles();
+            this.updateNavigationButtons();
+            this.clearSelection();
+            
+        } catch (error) {
+            Config.log('error', 'Navigation failed:', error);
+            Utils.showError('Failed to navigate to folder');
+        }
     }
     
-    loadDocumentPreview(file, container) {
-        container.innerHTML = `<iframe src="https://docs.google.com/viewer?url=https://drive.google.com/uc?id=${file.id}&embedded=true" class="preview-iframe"></iframe>`;
+    findFolderByPath(path) {
+        if (path === '/' || !path) {
+            return this.driveData;
+        }
+        
+        const pathParts = path.split('/').filter(part => part);
+        let currentFolder = this.driveData;
+        
+        for (const part of pathParts) {
+            if (!currentFolder.children) {
+                return null;
+            }
+            
+            const nextFolder = currentFolder.children.find(child => 
+                child.type === 'folder' && child.name === part
+            );
+            
+            if (!nextFolder) {
+                return null;
+            }
+            
+            currentFolder = nextFolder;
+        }
+        
+        return currentFolder;
     }
     
-    showPreviewError(file, container) {
-        container.innerHTML = `
-            <div class="preview-error">
-                <div class="preview-error-icon">📄</div>
-                <h3>Preview not available</h3>
-                <p>Unable to load preview for ${file.name}</p>
-                <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-                    <button class="preview-btn" onclick="window.App.previewManager.downloadCurrentFile()">
-                        📥 Download File
-                    </button>
-                    <button class="preview-btn" onclick="window.open('https://drive.google.com/file/d/${file.id}/view', '_blank')">
-                        🔗 Open in Drive
-                    </button>
+    renderFiles() {
+        if (!this.currentFolder) {
+            this.showEmptyState();
+            return;
+        }
+
+        const items = this.currentFolder.children || [];
+        
+        if (items.length === 0) {
+            this.showEmptyState();
+            return;
+        }
+
+        Utils.dom.hide(this.emptyState);
+        Utils.dom.show(this.folderActions);
+        
+        // Clear current files
+        this.fileGrid.innerHTML = '';
+        
+        // Sort items - folders first, then files
+        const sortedItems = [...items].sort((a, b) => {
+            if (a.type === 'folder' && b.type !== 'folder') return -1;
+            if (a.type !== 'folder' && b.type === 'folder') return 1;
+            return a.name.localeCompare(b.name, undefined, { numeric: true });
+        });
+        
+        // Render items
+        sortedItems.forEach((item, index) => {
+            const fileElement = this.createFileElement(item, index);
+            this.fileGrid.appendChild(fileElement);
+            
+            // Add download button to files (not folders)
+            if (window.App?.downloadManager && item.type === 'file') {
+                window.App.downloadManager.addDownloadButtonToFile(fileElement, item);
+            }
+        });
+        
+        // Apply view mode
+        this.applyViewMode();
+        
+        // Update selection UI
+        this.updateSelectionUI();
+    }
+    
+    createFileElement(item, index) {
+        const isFolder = item.type === 'folder';
+        const icon = isFolder ? Config.getFileIcon('folder') : Config.getFileIcon(item.mimeType, item.name);
+        const fileCount = isFolder && item.children ? item.children.length : null;
+        
+        const element = Utils.dom.create('div', {
+            className: `file-item ${this.viewMode === 'list' ? 'list-view' : ''}`,
+            'data-id': item.id,
+            'data-type': item.type,
+            'data-name': item.name
+        });
+        
+        // Add checkbox for files (not folders) for bulk selection
+        const checkboxHtml = !isFolder ? `
+            <div class="file-checkbox">
+                <input type="checkbox" id="file-${item.id}" onchange="window.App.fileManager.handleFileSelection('${item.id}', this.checked)">
+            </div>
+        ` : '';
+        
+        element.innerHTML = `
+            ${checkboxHtml}
+            <div class="file-content ${this.viewMode === 'list' ? 'list-view' : ''}">
+                <div class="file-icon ${this.viewMode === 'list' ? 'list-view' : ''}">${icon}</div>
+                <div class="file-info">
+                    <div class="file-name" title="${Utils.sanitizeHTML(item.name)}">${Utils.sanitizeHTML(item.name)}</div>
+                    <div class="file-details ${this.viewMode === 'list' ? 'list-view' : ''}">
+                        ${isFolder ? 
+                            (fileCount !== null ? `<span class="file-count">${fileCount} items</span>` : '') :
+                            `
+                                ${item.size ? `<span>${Config.formatFileSize(item.size)}</span>` : ''}
+                                ${item.modifiedTime ? `<span>${Config.formatDate(item.modifiedTime)}</span>` : ''}
+                            `
+                        }
+                    </div>
                 </div>
             </div>
         `;
+        
+        // Add click handlers
+        element.addEventListener('click', (e) => {
+            // Don't navigate if clicking on checkbox or download button
+            if (e.target.type === 'checkbox' || e.target.closest('.file-download-btn')) {
+                return;
+            }
+            
+            if (isFolder) {
+                this.navigateToFolder(item);
+            } else {
+                this.openFilePreview(item);
+            }
+        });
+        
+        return element;
     }
     
-    isDocumentType(mimeType) {
-        const documentTypes = [
-            'application/msword',
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'application/vnd.ms-excel',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'application/vnd.ms-powerpoint',
-            'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-            'text/plain',
-            'text/html'
-        ];
-        return documentTypes.includes(mimeType);
+    navigateToFolder(folder) {
+        const newPath = this.currentPath === '/' ? 
+            `/${folder.name}` : 
+            `${this.currentPath}/${folder.name}`;
+        
+        this.navigateToPath(newPath);
     }
     
-    showPreviousFile() {
-        if (this.currentIndex > 0) {
-            this.currentIndex--;
-            this.loadCurrentPreview();
+    openFilePreview(file) {
+        if (window.App?.previewManager) {
+            window.App.previewManager.showPreview(file, this.getCurrentFiles());
         }
     }
     
-    showNextFile() {
-        if (this.currentIndex < this.currentFiles.length - 1) {
-            this.currentIndex++;
-            this.loadCurrentPreview();
-        }
-    }
-    
-    // ✅ FIXED: Download button now uses same functionality as outside buttons
-    downloadCurrentFile() {
-        if (this.currentFile && window.App?.downloadManager) {
-            console.log(`🎯 Preview download: ${this.currentFile.name}`);
-            
-            // Use the same downloadSingleFile method as the outside buttons
-            window.App.downloadManager.downloadSingleFile(this.currentFile);
-            
-            // Optionally close preview after download starts
-            // this.hidePreview();
+    handleFileSelection(fileId, selected) {
+        if (selected) {
+            this.selectedFiles.add(fileId);
         } else {
-            console.error('Download manager not available or no current file');
-            Utils.showError('Download not available');
+            this.selectedFiles.delete(fileId);
         }
+        
+        this.updateFileElementSelection(fileId, selected);
+        this.updateSelectionUI();
+        
+        Config.log('debug', `File ${fileId} ${selected ? 'selected' : 'deselected'}. Total selected: ${this.selectedFiles.size}`);
+    }
+    
+    updateFileElementSelection(fileId, selected) {
+        const fileElement = Utils.dom.select(`[data-id="${fileId}"]`);
+        const checkbox = fileElement?.querySelector('input[type="checkbox"]');
+        
+        if (fileElement) {
+            if (selected) {
+                Utils.dom.addClass(fileElement, 'selected');
+            } else {
+                Utils.dom.removeClass(fileElement, 'selected');
+            }
+        }
+        
+        if (checkbox) {
+            checkbox.checked = selected;
+        }
+    }
+    
+    selectAllFiles() {
+        const files = this.getCurrentFiles().filter(item => item.type === 'file');
+        
+        files.forEach(file => {
+            this.selectedFiles.add(file.id);
+            this.updateFileElementSelection(file.id, true);
+        });
+        
+        this.updateSelectionUI();
+        
+        const count = files.length;
+        if (count > 0) {
+            Utils.showSuccess(`Selected ${count} file${count > 1 ? 's' : ''}`);
+        } else {
+            Utils.showInfo('No files to select in this folder');
+        }
+    }
+
+    deselectAllFiles() {
+        this.selectedFiles.forEach(fileId => {
+            this.updateFileElementSelection(fileId, false);
+        });
+        
+        this.selectedFiles.clear();
+        this.updateSelectionUI();
+        
+        Utils.showInfo('All files deselected');
+    }
+    
+    updateSelectionUI() {
+        const selectedCount = this.selectedFiles.size;
+        
+        if (selectedCount > 0) {
+            Utils.dom.show(this.selectedCount);
+            Utils.dom.show(this.downloadSelected);
+            Utils.dom.show(this.deselectAllButton);
+            
+            if (this.selectedNumber) {
+                this.selectedNumber.textContent = selectedCount;
+            }
+            
+            // Update download button text
+            if (this.downloadSelected) {
+                if (selectedCount === 1) {
+                    this.downloadSelected.textContent = '📥 Download File';
+                } else {
+                    this.downloadSelected.textContent = `📦 Download ${selectedCount} Files (ZIP)`;
+                }
+            }
+        } else {
+            Utils.dom.hide(this.selectedCount);
+            Utils.dom.hide(this.downloadSelected);
+            Utils.dom.hide(this.deselectAllButton);
+        }
+    }
+
+    downloadSelectedFiles() {
+        const selectedFiles = this.getSelectedFiles();
+        
+        if (selectedFiles.length === 0) {
+            Utils.showWarning('No files selected for download');
+            return;
+        }
+        
+        if (window.App?.downloadManager) {
+            window.App.downloadManager.downloadFiles(selectedFiles);
+        } else {
+            Utils.showError('Download manager not available');
+        }
+    }
+    
+    downloadFile(file) {
+        if (window.App?.downloadManager) {
+            window.App.downloadManager.downloadFiles([file]);
+        }
+    }
+    
+    getSelectedFiles() {
+        const currentFiles = this.getCurrentFiles();
+        return currentFiles.filter(file => 
+            file.type === 'file' && this.selectedFiles.has(file.id)
+        );
+    }
+    
+    getCurrentFiles() {
+        return this.currentFolder?.children || [];
+    }
+    
+    clearSelection() {
+        this.selectedFiles.clear();
+        this.updateSelectionUI();
+        
+        // Clear checkboxes
+        const checkboxes = Utils.dom.selectAll('input[type="checkbox"]');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = false;
+        });
+        
+        // Remove selected class from file elements
+        const selectedElements = Utils.dom.selectAll('.file-item.selected');
+        selectedElements.forEach(element => {
+            Utils.dom.removeClass(element, 'selected');
+        });
+    }
+    
+    // Navigation history management
+    addToHistory(path) {
+        // Remove any forward history if we're navigating from the middle
+        if (this.historyIndex < this.navigationHistory.length - 1) {
+            this.navigationHistory = this.navigationHistory.slice(0, this.historyIndex + 1);
+        }
+        
+        // Add new path if it's different from the current one
+        if (this.navigationHistory[this.historyIndex] !== path) {
+            this.navigationHistory.push(path);
+            this.historyIndex = this.navigationHistory.length - 1;
+        }
+        
+        // Limit history size
+        if (this.navigationHistory.length > 50) {
+            this.navigationHistory.shift();
+            this.historyIndex--;
+        }
+    }
+    
+    navigateBack() {
+        if (this.historyIndex > 0) {
+            this.historyIndex--;
+            const path = this.navigationHistory[this.historyIndex];
+            this.navigateToPath(path);
+        }
+    }
+    
+    navigateForward() {
+        if (this.historyIndex < this.navigationHistory.length - 1) {
+            this.historyIndex++;
+            const path = this.navigationHistory[this.historyIndex];
+            this.navigateToPath(path);
+        }
+    }
+    
+    updateNavigationButtons() {
+        if (this.backButton) {
+            this.backButton.disabled = this.historyIndex <= 0;
+        }
+        
+        if (this.forwardButton) {
+            this.forwardButton.disabled = this.historyIndex >= this.navigationHistory.length - 1;
+        }
+    }
+    
+    // Breadcrumb management
+    updateBreadcrumb() {
+        if (!this.breadcrumb) return;
+        
+        this.breadcrumb.innerHTML = '';
+        
+        const pathParts = this.currentPath.split('/').filter(part => part);
+        
+        // Add home/root
+        const homeElement = Utils.dom.create('span', {
+            className: 'breadcrumb-item',
+            'data-path': '/',
+            innerHTML: '<span class="breadcrumb-icon">🏠</span>Home'
+        });
+        
+        if (this.currentPath === '/') {
+            Utils.dom.addClass(homeElement, 'active');
+        }
+        
+        this.breadcrumb.appendChild(homeElement);
+        
+        // Add path parts
+        let currentPath = '';
+        pathParts.forEach((part, index) => {
+            currentPath += '/' + part;
+            
+            // Add separator
+            const separator = Utils.dom.create('span', {
+                className: 'breadcrumb-separator',
+                textContent: '/'
+            });
+            this.breadcrumb.appendChild(separator);
+            
+            // Add breadcrumb item
+            const itemElement = Utils.dom.create('span', {
+                className: 'breadcrumb-item',
+                'data-path': currentPath,
+                textContent: part
+            });
+            
+            if (index === pathParts.length - 1) {
+                Utils.dom.addClass(itemElement, 'active');
+            }
+            
+            this.breadcrumb.appendChild(itemElement);
+        });
+    }
+    
+    // View mode management
+    setViewMode(mode) {
+        if (this.viewMode === mode) return;
+        
+        this.viewMode = mode;
+        
+        // Update buttons
+        if (mode === 'grid') {
+            Utils.dom.addClass(this.gridViewButton, 'active');
+            Utils.dom.removeClass(this.listViewButton, 'active');
+        } else {
+            Utils.dom.addClass(this.listViewButton, 'active');
+            Utils.dom.removeClass(this.gridViewButton, 'active');
+        }
+        
+        // Save preference
+        Utils.storage.set(Config.STORAGE_KEYS.VIEW_MODE, mode);
+        
+        // Re-render with new view mode
+        this.renderFiles();
+        
+        Config.log('debug', `View mode changed to: ${mode}`);
+    }
+    
+    applyViewMode() {
+        if (this.viewMode === 'list') {
+            Utils.dom.addClass(this.fileGrid, 'list-view');
+        } else {
+            Utils.dom.removeClass(this.fileGrid, 'list-view');
+        }
+    }
+    
+    showEmptyState() {
+        Utils.dom.show(this.emptyState);
+        Utils.dom.hide(this.folderActions);
+        this.fileGrid.innerHTML = '';
+    }
+    
+    // Keyboard shortcuts
+    handleKeyboard(e) {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            return; // Don't handle shortcuts in form fields
+        }
+        
+        switch (e.key) {
+            case Config.KEYBOARD_SHORTCUTS.ESCAPE:
+                this.deselectAllFiles();
+                break;
+                
+            case Config.KEYBOARD_SHORTCUTS.ARROW_LEFT:
+                if (e.altKey || e.metaKey) {
+                    e.preventDefault();
+                    this.navigateBack();
+                }
+                break;
+                
+            case Config.KEYBOARD_SHORTCUTS.ARROW_RIGHT:
+                if (e.altKey || e.metaKey) {
+                    e.preventDefault();
+                    this.navigateForward();
+                }
+                break;
+        }
+        
+        if (e.ctrlKey || e.metaKey) {
+            switch (e.code) {
+                case Config.KEYBOARD_SHORTCUTS.CTRL_A:
+                    e.preventDefault();
+                    this.selectAllFiles();
+                    break;
+                    
+                case Config.KEYBOARD_SHORTCUTS.CTRL_D:
+                    e.preventDefault();
+                    this.downloadSelectedFiles();
+                    break;
+            }
+        }
+    }
+    
+    // User preferences
+    loadUserPreferences() {
+        const savedViewMode = Utils.storage.get(Config.STORAGE_KEYS.VIEW_MODE);
+        if (savedViewMode && (savedViewMode === 'grid' || savedViewMode === 'list')) {
+            this.setViewMode(savedViewMode);
+        }
+    }
+    
+    // Public API
+    getCurrentPath() {
+        return this.currentPath;
+    }
+    
+    getCurrentFolder() {
+        return this.currentFolder;
+    }
+    
+    getSelectedCount() {
+        return this.selectedFiles.size;
+    }
+    
+    refresh() {
+        this.navigateToPath(this.currentPath);
     }
 }
 
 // Export for modules
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = PreviewManager;
+    module.exports = FileManager;
 }
