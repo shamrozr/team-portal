@@ -10,6 +10,9 @@
     <link rel="stylesheet" href="assets/css/auth.css">
     <link rel="stylesheet" href="assets/css/portal.css">
     
+    <!-- JSZip for client-side ZIP creation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    
     <!-- Preload critical resources -->
     <link rel="preload" href="data/auth.csv" as="fetch" crossorigin="anonymous">
     <link rel="preload" href="data/drive.json" as="fetch" crossorigin="anonymous">
@@ -68,6 +71,11 @@
                 </div>
                 
                 <div class="header-right">
+                    <!-- Selection Counter -->
+                    <div id="selectedCount" class="selected-count hidden">
+                        <span id="selectedNumber">0</span> selected
+                    </div>
+                    
                     <button id="logoutButton" class="btn btn-secondary">
                         Logout
                     </button>
@@ -101,6 +109,18 @@
             <!-- Folder Actions -->
             <div id="folderActions" class="folder-actions">
                 <div class="actions-left">
+                    <!-- Selection Controls -->
+                    <button id="selectAllButton" class="btn btn-secondary btn-sm">
+                        Select All Files
+                    </button>
+                    <button id="deselectAllButton" class="btn btn-secondary btn-sm hidden">
+                        Deselect All
+                    </button>
+                    
+                    <!-- Download Selected -->
+                    <button id="downloadSelected" class="btn btn-primary btn-sm hidden">
+                        📥 Download Selected
+                    </button>
                 </div>
                 
                 <div class="actions-right">
@@ -157,6 +177,13 @@
                 console.error('❌ Utils is not loaded!');
                 document.body.innerHTML = '<div style="text-align: center; padding: 2rem;"><h2>Utilities Error</h2><p>Failed to load application utilities. Please refresh the page.</p></div>';
                 return;
+            }
+            
+            // Verify JSZip is loaded
+            if (typeof JSZip === 'undefined') {
+                console.warn('⚠️ JSZip not loaded - ZIP functionality may be limited');
+            } else {
+                console.log('✅ JSZip loaded successfully');
             }
             
             console.log('✅ Core modules loaded successfully');
