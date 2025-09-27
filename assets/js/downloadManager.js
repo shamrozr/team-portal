@@ -1,4 +1,4 @@
-// assets/js/downloadManager.js - User-controlled sequential downloads
+// assets/js/downloadManager.js - Robust download manager with proper save detection
 
 class DownloadManager {
     constructor() {
@@ -9,14 +9,15 @@ class DownloadManager {
         this.isDownloading = false;
         this.isMobile = this.detectMobile();
         this.currentDownloadIndex = 0;
-        this.userInteractionDetected = false;
-        this.downloadStateListeners = new Map();
+        this.downloadStartTime = null;
+        this.waitingForUserConfirmation = false;
+        this.manualAdvanceRequired = false;
         
         this.createDownloadWidget();
         this.createDownloadFrame();
         this.bindEvents();
         this.addFileDownloadButtonStyles();
-        this.setupDownloadDetection();
+        this.setupAdvancedDetection();
     }
     
     detectMobile() {
@@ -27,84 +28,82 @@ class DownloadManager {
         return isMobileUA || (isMobileScreen && isTouchDevice);
     }
     
-    setupDownloadDetection() {
-        // Detect when user interacts with download prompts
-        this.setupUserInteractionDetection();
-        this.setupDownloadStateDetection();
+    setupAdvancedDetection() {
+        // More conservative detection - require explicit user confirmation
+        this.setupFocusDetection();
+        this.setupVisibilityDetection();
+        this.setupNavigationDetection();
     }
     
-    setupUserInteractionDetection() {
-        // Listen for various user interaction events that indicate download action
-        const events = ['click', 'touchstart', 'keydown', 'mousedown'];
+    setupFocusDetection() {
+        let focusChangeCount = 0;
+        let lastFocusChange = 0;
         
-        events.forEach(eventType => {
-            document.addEventListener(eventType, (e) => {
-                // Only track interactions on download-related elements or system dialogs
-                if (this.isDownloadRelatedInteraction(e)) {
-                    this.userInteractionDetected = true;
-                    console.log('User interaction detected for download');
-                }
-            }, true);
-        });
-    }
-    
-    isDownloadRelatedInteraction(event) {
-        // Check if the interaction is related to download elements
-        const target = event.target;
-        
-        // Check for download-related elements
-        const downloadElements = [
-            '.download-trigger',
-            '.file-download-btn',
-            '[download]',
-            'iframe',
-            // System download dialog elements (these vary by browser)
-            '[role="dialog"]',
-            '[aria-label*="download" i]',
-            '[aria-label*="save" i]'
-        ];
-        
-        return downloadElements.some(selector => {
-            try {
-                return target.matches(selector) || target.closest(selector);
-            } catch (e) {
-                return false;
-            }
-        });
-    }
-    
-    setupDownloadStateDetection() {
-        // Monitor document visibility changes (helps detect download dialogs)
-        document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                console.log('Document became hidden - possible download dialog');
-                this.userInteractionDetected = true;
-            }
-        });
-        
-        // Monitor focus changes (download dialogs often steal focus)
         window.addEventListener('blur', () => {
-            if (this.isDownloading) {
-                console.log('Window lost focus during download - possible save dialog');
-                this.userInteractionDetected = true;
+            if (this.waitingForUserConfirmation) {
+                focusChangeCount++;
+                lastFocusChange = Date.now();
+                console.log('Window blur detected during download');
             }
         });
         
         window.addEventListener('focus', () => {
-            if (this.isDownloading && this.userInteractionDetected) {
-                console.log('Window regained focus after interaction - download likely handled');
-                setTimeout(() => {
-                    this.onDownloadHandled();
-                }, 1000); // Small delay to ensure download processing
+            if (this.waitingForUserConfirmation && focusChangeCount > 0) {
+                const timeSinceFocusChange = Date.now() - lastFocusChange;
+                if (timeSinceFocusChange > 1000) { // At least 1 second gap
+                    console.log('Window focus returned after significant delay');
+                    this.suggestAdvancement();
+                }
             }
         });
     }
     
-    onDownloadHandled() {
-        if (this.isDownloading && this.userInteractionDetected) {
-            console.log('Download interaction completed, proceeding to next file');
-            this.userInteractionDetected = false;
-            this.proceedToNextDownload();
+    setupVisibilityDetection() {
+        document.addEventListener('visibilitychange', () => {
+            if (this.waitingForUserConfirmation) {
+                if (document.hidden) {
+                    console.log('Page became hidden - possible download dialog');
+                } else {
+                    console.log('Page became visible again');
+                    setTimeout(() => {
+                        this.suggestAdvancement();
+                    }, 2000);
+                }
+            }
+        });
+    }
+    
+    setupNavigationDetection() {
+        // Detect page unload attempts (user navigating away after download)
+        window.addEventListener('beforeunload', () => {
+            if (this.waitingForUserConfirmation) {
+                // Don't prevent navigation, just log it
+                console.log('User attempting to navigate away - download likely handled');
+            }
+        });
+    }
+    
+    suggestAdvancement() {
+        if (this.waitingForUserConfirmation && !this.manualAdvanceRequired) {
+            // Show suggestion that user can advance
+            this.showAdvancementSuggestion();
+        }
+    }
+    
+    showAdvancementSuggestion() {
+        const instructionText = document.getElementById('instructionText');
+        if (instructionText) {
+            instructionText.innerHTML = `
+                <strong>📱 File download may be complete!</strong><br>
+                If you've saved the file, click "Next File" to continue.<br>
+                If not, please save it first, then click "Next File".
+            `;
+        }
+        
+        // Pulse the next button to draw attention
+        const nextButton = document.getElementById('nextFileButton');
+        if (nextButton) {
+            nextButton.style.animation = 'pulse 2s infinite';
         }
     }
     
@@ -129,14 +128,21 @@ class DownloadManager {
             <div class="download-body" id="downloadBody">
                 <div class="download-instructions" id="downloadInstructions" style="display: none;">
                     <div class="instruction-content">
-                        <p><strong>📱 Download Instructions:</strong></p>
-                        <p id="instructionText">Please save the current file, then click "Next File" to continue.</p>
-                        <button class="btn btn-primary" id="nextFileButton" style="display: none;">
-                            ⏭️ Next File
-                        </button>
-                        <button class="btn btn-secondary" id="skipFileButton" style="display: none;">
-                            ⏩ Skip This File
-                        </button>
+                        <p id="instructionText">Preparing downloads...</p>
+                        <div class="instruction-buttons">
+                            <button class="btn btn-primary" id="nextFileButton" style="display: none;">
+                                ✅ File Saved - Next File
+                            </button>
+                            <button class="btn btn-warning" id="retryFileButton" style="display: none;">
+                                🔄 Retry This File
+                            </button>
+                            <button class="btn btn-secondary" id="skipFileButton" style="display: none;">
+                                ⏩ Skip This File
+                            </button>
+                        </div>
+                        <div class="download-timer" id="downloadTimer" style="display: none;">
+                            <small>Download started: <span id="timerDisplay">0s</span> ago</small>
+                        </div>
                     </div>
                 </div>
                 <div class="download-list" id="downloadList">
@@ -152,6 +158,8 @@ class DownloadManager {
                     <div class="download-controls">
                         <button class="download-btn cancel-btn" id="cancelAll">Cancel All</button>
                         <button class="download-btn start-btn" id="startDownloads" style="display: none;">🚀 Start Downloads</button>
+                        <button class="download-btn pause-btn" id="pauseDownloads" style="display: none;">⏸️ Pause</button>
+                        <button class="download-btn resume-btn" id="resumeDownloads" style="display: none;">▶️ Resume</button>
                     </div>
                 </div>
             </div>
@@ -171,7 +179,7 @@ class DownloadManager {
                 position: fixed;
                 bottom: 20px;
                 right: 20px;
-                width: 350px;
+                width: 380px;
                 max-width: calc(100vw - 40px);
                 background: white;
                 border-radius: 12px;
@@ -233,7 +241,7 @@ class DownloadManager {
             }
             
             .download-body {
-                max-height: 450px;
+                max-height: 500px;
                 overflow: hidden;
                 display: flex;
                 flex-direction: column;
@@ -241,7 +249,7 @@ class DownloadManager {
             
             .download-instructions {
                 background: linear-gradient(135deg, #fef3c7, #fde68a);
-                border-bottom: 1px solid #f59e0b;
+                border-bottom: 2px solid #f59e0b;
                 padding: 16px;
                 text-align: center;
             }
@@ -249,19 +257,34 @@ class DownloadManager {
             .instruction-content {
                 color: #92400e;
                 font-size: 13px;
-                line-height: 1.4;
+                line-height: 1.5;
             }
             
             .instruction-content p {
-                margin: 0 0 8px 0;
+                margin: 0 0 12px 0;
+                font-weight: 500;
             }
             
-            .instruction-content strong {
+            .instruction-buttons {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                margin: 12px 0;
+            }
+            
+            .download-timer {
+                margin-top: 8px;
+                padding-top: 8px;
+                border-top: 1px solid rgba(146, 64, 14, 0.2);
+            }
+            
+            .download-timer small {
                 color: #78350f;
+                font-size: 11px;
             }
             
             .download-list {
-                max-height: 250px;
+                max-height: 280px;
                 overflow-y: auto;
                 padding: 8px;
             }
@@ -270,12 +293,13 @@ class DownloadManager {
                 display: flex;
                 align-items: center;
                 gap: 12px;
-                padding: 10px;
+                padding: 12px;
                 border-radius: 8px;
                 margin-bottom: 6px;
                 transition: all 0.2s;
                 font-size: 13px;
                 border: 2px solid transparent;
+                position: relative;
             }
             
             .download-item:hover {
@@ -286,11 +310,12 @@ class DownloadManager {
                 background: rgba(59, 130, 246, 0.1);
                 border-color: #3b82f6;
                 box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
+                animation: currentPulse 2s infinite;
             }
             
             .download-item.waiting {
-                background: rgba(251, 191, 36, 0.1);
-                border-color: #fbbf24;
+                background: rgba(156, 163, 175, 0.1);
+                border-color: #9ca3af;
             }
             
             .download-item.completed {
@@ -303,14 +328,32 @@ class DownloadManager {
                 border-color: #ef4444;
             }
             
+            .download-item.skipped {
+                background: rgba(251, 191, 36, 0.1);
+                border-color: #fbbf24;
+                opacity: 0.7;
+            }
+            
+            @keyframes currentPulse {
+                0%, 100% { transform: scale(1); }
+                50% { transform: scale(1.02); }
+            }
+            
+            @keyframes pulse {
+                0%, 100% { transform: scale(1); }
+                50% { transform: scale(1.05); box-shadow: 0 0 15px rgba(59, 130, 246, 0.4); }
+            }
+            
             .download-status-icon {
-                width: 24px;
-                height: 24px;
+                width: 28px;
+                height: 28px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 font-size: 16px;
                 flex-shrink: 0;
+                border-radius: 50%;
+                background: rgba(255, 255, 255, 0.8);
             }
             
             .download-info {
@@ -324,12 +367,15 @@ class DownloadManager {
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
-                margin-bottom: 3px;
+                margin-bottom: 4px;
             }
             
             .download-details {
                 font-size: 11px;
                 color: #6b7280;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
             }
             
             .download-summary {
@@ -372,7 +418,7 @@ class DownloadManager {
                 flex-wrap: wrap;
             }
             
-            .download-btn {
+            .download-btn, .btn {
                 padding: 8px 12px;
                 border: none;
                 border-radius: 6px;
@@ -381,6 +427,9 @@ class DownloadManager {
                 cursor: pointer;
                 transition: all 0.2s;
                 white-space: nowrap;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
             }
             
             .cancel-btn {
@@ -392,27 +441,22 @@ class DownloadManager {
                 background: #e5e7eb;
             }
             
-            .start-btn {
+            .start-btn, .resume-btn {
                 background: #059669;
                 color: white;
             }
             
-            .start-btn:hover {
+            .start-btn:hover, .resume-btn:hover {
                 background: #047857;
             }
             
-            .btn {
-                display: inline-flex;
-                align-items: center;
-                gap: 6px;
-                padding: 6px 12px;
-                border: none;
-                border-radius: 6px;
-                font-size: 12px;
-                font-weight: 500;
-                cursor: pointer;
-                transition: all 0.2s;
-                margin: 4px 2px;
+            .pause-btn {
+                background: #d97706;
+                color: white;
+            }
+            
+            .pause-btn:hover {
+                background: #b45309;
             }
             
             .btn-primary {
@@ -422,6 +466,7 @@ class DownloadManager {
             
             .btn-primary:hover {
                 background: #2563eb;
+                transform: translateY(-1px);
             }
             
             .btn-secondary {
@@ -431,6 +476,15 @@ class DownloadManager {
             
             .btn-secondary:hover {
                 background: #4b5563;
+            }
+            
+            .btn-warning {
+                background: #f59e0b;
+                color: white;
+            }
+            
+            .btn-warning:hover {
+                background: #d97706;
             }
             
             .download-spinner {
@@ -462,13 +516,17 @@ class DownloadManager {
                     align-items: stretch;
                 }
                 
-                .download-btn {
+                .download-btn, .btn {
                     width: 100%;
+                    margin: 2px 0;
                 }
                 
-                .instruction-content .btn {
+                .instruction-buttons {
+                    flex-direction: column;
+                }
+                
+                .instruction-buttons .btn {
                     width: 100%;
-                    margin: 4px 0;
                 }
             }
         `;
@@ -536,7 +594,7 @@ class DownloadManager {
         if (fileElement.querySelector('.file-download-btn')) return;
         
         const downloadBtn = document.createElement('button');
-        downloadBtn.className = 'file-download-btn download-trigger';
+        downloadBtn.className = 'file-download-btn';
         downloadBtn.innerHTML = '📥';
         downloadBtn.title = `Download ${file.name}`;
         downloadBtn.onclick = (e) => {
@@ -551,12 +609,14 @@ class DownloadManager {
     }
     
     bindEvents() {
-        const widget = document.getElementById('downloadWidget');
         const toggle = document.getElementById('downloadToggle');
         const close = document.getElementById('downloadClose');
         const cancelAll = document.getElementById('cancelAll');
         const startDownloads = document.getElementById('startDownloads');
+        const pauseDownloads = document.getElementById('pauseDownloads');
+        const resumeDownloads = document.getElementById('resumeDownloads');
         const nextFileButton = document.getElementById('nextFileButton');
+        const retryFileButton = document.getElementById('retryFileButton');
         const skipFileButton = document.getElementById('skipFileButton');
         
         // Header click to toggle
@@ -577,32 +637,22 @@ class DownloadManager {
             this.hideWidget();
         });
         
-        // Cancel all button
-        cancelAll.addEventListener('click', () => {
-            this.cancelAllDownloads();
-        });
+        // Control buttons
+        cancelAll.addEventListener('click', () => this.cancelAllDownloads());
+        startDownloads.addEventListener('click', () => this.startSequentialDownloads());
+        pauseDownloads.addEventListener('click', () => this.pauseDownloads());
+        resumeDownloads.addEventListener('click', () => this.resumeDownloads());
         
-        // Start downloads button
-        startDownloads.addEventListener('click', () => {
-            this.startSequentialDownloads();
-        });
-        
-        // Next file button
-        nextFileButton.addEventListener('click', () => {
-            this.proceedToNextDownload();
-        });
-        
-        // Skip file button
-        skipFileButton.addEventListener('click', () => {
-            this.skipCurrentDownload();
-        });
+        // File control buttons
+        nextFileButton.addEventListener('click', () => this.proceedToNextDownload());
+        retryFileButton.addEventListener('click', () => this.retryCurrentDownload());
+        skipFileButton.addEventListener('click', () => this.skipCurrentDownload());
     }
     
     createDownloadFrame() {
         if (!this.downloadFrame) {
             this.downloadFrame = document.createElement('iframe');
             this.downloadFrame.id = 'downloadFrame';
-            this.downloadFrame.className = 'download-trigger';
             this.downloadFrame.style.cssText = 'display: none; width: 0; height: 0; border: none;';
             document.body.appendChild(this.downloadFrame);
         }
@@ -628,12 +678,14 @@ class DownloadManager {
     }
     
     setupSequentialDownloads(files) {
-        // Reset state
+        // Reset state completely
         this.downloadQueueData = [];
         this.currentDownloadIndex = 0;
         this.completedDownloads = 0;
         this.failedDownloads = 0;
         this.isDownloading = false;
+        this.waitingForUserConfirmation = false;
+        this.manualAdvanceRequired = false;
         
         // Add files to queue
         const queueItems = files.map((file, index) => ({
@@ -657,7 +709,7 @@ class DownloadManager {
         this.showStartButton();
         this.updateUI();
         
-        this.showToast(`${files.length} files ready for download. Click "Start Downloads" to begin.`, 'info');
+        this.showToast(`${files.length} files added to download queue. Click "Start Downloads" to begin.`, 'info');
     }
     
     startSequentialDownloads() {
@@ -669,7 +721,10 @@ class DownloadManager {
         this.isDownloading = true;
         this.currentDownloadIndex = 0;
         this.hideStartButton();
+        this.showPauseButton();
         this.showInstructions();
+        
+        console.log('Starting sequential downloads...');
         
         // Start with the first file
         this.downloadCurrentFile();
@@ -682,26 +737,39 @@ class DownloadManager {
         }
         
         const currentItem = this.downloadQueueData[this.currentDownloadIndex];
-        if (!currentItem || currentItem.status === 'completed' || currentItem.status === 'skipped') {
+        if (!currentItem) {
+            console.warn('No current item found, advancing...');
             this.proceedToNextDownload();
             return;
         }
         
-        console.log(`Starting download for: ${currentItem.name}`);
+        // Skip already processed files
+        if (currentItem.status === 'completed' || currentItem.status === 'skipped') {
+            console.log(`Skipping already processed file: ${currentItem.name}`);
+            this.proceedToNextDownload();
+            return;
+        }
+        
+        console.log(`Starting download for: ${currentItem.name} (${this.currentDownloadIndex + 1}/${this.downloadQueueData.length})`);
+        
+        // Reset states
+        this.waitingForUserConfirmation = false;
+        this.manualAdvanceRequired = false;
         
         // Mark as current and start download
         currentItem.status = 'current';
         currentItem.startTime = Date.now();
-        this.userInteractionDetected = false;
+        this.downloadStartTime = Date.now();
         
         this.updateUI();
         this.updateInstructions(currentItem);
+        this.startDownloadTimer();
         
         // Trigger download
         this.triggerFileDownload(currentItem);
         
-        // Start monitoring for user interaction
-        this.monitorDownloadProgress(currentItem);
+        // Start waiting for user confirmation
+        this.waitForUserConfirmation(currentItem);
     }
     
     triggerFileDownload(item) {
@@ -715,7 +783,6 @@ class DownloadManager {
                 const link = document.createElement('a');
                 link.href = downloadUrl;
                 link.download = item.name;
-                link.className = 'download-trigger';
                 link.style.display = 'none';
                 document.body.appendChild(link);
                 link.click();
@@ -727,44 +794,193 @@ class DownloadManager {
             
             console.log(`Download triggered for: ${item.name}`);
             
+            // After triggering download, immediately start waiting for user confirmation
+            setTimeout(() => {
+                this.waitingForUserConfirmation = true;
+                this.showUserControls();
+            }, 2000); // Give browser time to process download
+            
         } catch (error) {
             console.error(`Failed to trigger download for ${item.name}:`, error);
             this.markDownloadFailed(item, error.message);
         }
     }
     
-    monitorDownloadProgress(item) {
-        // Show manual controls after a short delay
+    waitForUserConfirmation(item) {
+        // Show instructions after a delay
         setTimeout(() => {
-            if (item.status === 'current') {
-                this.showManualControls();
+            if (item.status === 'current' && this.waitingForUserConfirmation) {
+                this.updateInstructions(item, 'waiting');
             }
-        }, 2000);
+        }, 3000);
         
-        // Auto-advance if user interaction is detected quickly
-        const checkInterval = setInterval(() => {
-            if (this.userInteractionDetected || item.status !== 'current') {
-                clearInterval(checkInterval);
+        // Show suggestion to advance after longer delay
+        setTimeout(() => {
+            if (item.status === 'current' && this.waitingForUserConfirmation) {
+                this.showAdvancementSuggestion();
+            }
+        }, 8000);
+        
+        // Require manual advancement after timeout
+        setTimeout(() => {
+            if (item.status === 'current' && this.waitingForUserConfirmation) {
+                this.manualAdvanceRequired = true;
+                this.updateInstructions(item, 'manual');
+            }
+        }, 15000); // 15 seconds timeout
+    }
+    
+    updateInstructions(currentItem, phase = 'downloading') {
+        const instructionText = document.getElementById('instructionText');
+        if (!instructionText || !currentItem) return;
+        
+        const fileNumber = this.currentDownloadIndex + 1;
+        const totalFiles = this.downloadQueueData.length;
+        
+        switch (phase) {
+            case 'downloading':
+                instructionText.innerHTML = `
+                    <strong>📥 Downloading File ${fileNumber} of ${totalFiles}</strong><br>
+                    <em>${currentItem.name}</em><br><br>
+                    Your browser should prompt you to save this file.<br>
+                    <small>Please wait for the download to start...</small>
+                `;
+                break;
                 
-                if (this.userInteractionDetected) {
-                    setTimeout(() => {
-                        if (item.status === 'current') {
-                            this.markDownloadCompleted(item);
-                            this.proceedToNextDownload();
-                        }
-                    }, 1000);
-                }
-            }
-        }, 500);
+            case 'waiting':
+                instructionText.innerHTML = `
+                    <strong>💾 Please Save the File</strong><br>
+                    <em>${currentItem.name}</em><br><br>
+                    If your browser showed a download dialog, please save the file.<br>
+                    Once saved, click "File Saved - Next File" below.
+                `;
+                break;
+                
+            case 'manual':
+                instructionText.innerHTML = `
+                    <strong>⏳ Waiting for Your Confirmation</strong><br>
+                    <em>${currentItem.name}</em><br><br>
+                    <span style="color: #dc2626;">Please confirm if you saved the file:</span><br>
+                    • If saved ✅ → Click "File Saved - Next File"<br>
+                    • If failed ❌ → Click "Retry This File"<br>
+                    • To skip → Click "Skip This File"
+                `;
+                break;
+        }
+    }
+    
+    startDownloadTimer() {
+        const timerDisplay = document.getElementById('timerDisplay');
+        const timerContainer = document.getElementById('downloadTimer');
         
-        // Timeout after 30 seconds if no interaction
-        setTimeout(() => {
-            clearInterval(checkInterval);
-            if (item.status === 'current') {
-                console.log(`Download timeout for: ${item.name}`);
-                this.showManualControls();
+        if (!timerDisplay || !timerContainer) return;
+        
+        timerContainer.style.display = 'block';
+        
+        const updateTimer = () => {
+            if (this.downloadStartTime && this.waitingForUserConfirmation) {
+                const elapsed = Math.floor((Date.now() - this.downloadStartTime) / 1000);
+                timerDisplay.textContent = `${elapsed}s`;
+                setTimeout(updateTimer, 1000);
+            } else {
+                timerContainer.style.display = 'none';
             }
-        }, 30000);
+        };
+        
+        updateTimer();
+    }
+    
+    showUserControls() {
+        const nextButton = document.getElementById('nextFileButton');
+        const retryButton = document.getElementById('retryFileButton');
+        const skipButton = document.getElementById('skipFileButton');
+        
+        if (nextButton) {
+            nextButton.style.display = 'block';
+            nextButton.style.animation = ''; // Remove any existing animation
+        }
+        if (retryButton) retryButton.style.display = 'block';
+        if (skipButton) skipButton.style.display = 'block';
+    }
+    
+    hideUserControls() {
+        const nextButton = document.getElementById('nextFileButton');
+        const retryButton = document.getElementById('retryFileButton');
+        const skipButton = document.getElementById('skipFileButton');
+        
+        if (nextButton) nextButton.style.display = 'none';
+        if (retryButton) retryButton.style.display = 'none';
+        if (skipButton) skipButton.style.display = 'none';
+        
+        // Hide timer
+        const timerContainer = document.getElementById('downloadTimer');
+        if (timerContainer) timerContainer.style.display = 'none';
+    }
+    
+    proceedToNextDownload() {
+        console.log('User confirmed file saved, proceeding to next download');
+        
+        const currentItem = this.downloadQueueData[this.currentDownloadIndex];
+        if (currentItem && currentItem.status === 'current') {
+            this.markDownloadCompleted(currentItem);
+        }
+        
+        this.hideUserControls();
+        this.waitingForUserConfirmation = false;
+        this.manualAdvanceRequired = false;
+        this.currentDownloadIndex++;
+        
+        if (this.currentDownloadIndex < this.downloadQueueData.length) {
+            // Wait a moment before starting next download
+            setTimeout(() => {
+                this.downloadCurrentFile();
+            }, 1000);
+        } else {
+            this.onAllDownloadsComplete();
+        }
+    }
+    
+    retryCurrentDownload() {
+        console.log('User requested retry for current download');
+        
+        const currentItem = this.downloadQueueData[this.currentDownloadIndex];
+        if (currentItem) {
+            currentItem.retries = (currentItem.retries || 0) + 1;
+            currentItem.status = 'waiting';
+            
+            this.hideUserControls();
+            this.waitingForUserConfirmation = false;
+            this.manualAdvanceRequired = false;
+            
+            // Retry after short delay
+            setTimeout(() => {
+                this.downloadCurrentFile();
+            }, 1000);
+        }
+    }
+    
+    skipCurrentDownload() {
+        console.log('User requested to skip current download');
+        
+        const currentItem = this.downloadQueueData[this.currentDownloadIndex];
+        if (currentItem) {
+            currentItem.status = 'skipped';
+            currentItem.endTime = Date.now();
+        }
+        
+        this.hideUserControls();
+        this.waitingForUserConfirmation = false;
+        this.manualAdvanceRequired = false;
+        this.currentDownloadIndex++;
+        
+        if (this.currentDownloadIndex < this.downloadQueueData.length) {
+            // Continue to next file
+            setTimeout(() => {
+                this.downloadCurrentFile();
+            }, 1000);
+        } else {
+            this.onAllDownloadsComplete();
+        }
     }
     
     markDownloadCompleted(item) {
@@ -785,120 +1001,93 @@ class DownloadManager {
         
         console.log(`Download failed: ${item.name} - ${error}`);
         this.updateUI();
-    }
-    
-    proceedToNextDownload() {
-        this.hideManualControls();
-        this.userInteractionDetected = false;
-        this.currentDownloadIndex++;
         
-        if (this.currentDownloadIndex < this.downloadQueueData.length) {
-            // Short delay before next download
-            setTimeout(() => {
-                this.downloadCurrentFile();
-            }, 1000);
-        } else {
-            this.onAllDownloadsComplete();
-        }
+        // Show retry option for failed downloads
+        setTimeout(() => {
+            if (item.status === 'failed') {
+                this.showUserControls();
+                this.updateInstructions(item, 'manual');
+            }
+        }, 1000);
     }
     
-    skipCurrentDownload() {
+    pauseDownloads() {
+        console.log('Downloads paused by user');
+        this.isDownloading = false;
+        this.showResumeButton();
+        this.hidePauseButton();
+        
+        const instructionText = document.getElementById('instructionText');
+        if (instructionText) {
+            instructionText.innerHTML = `
+                <strong>⏸️ Downloads Paused</strong><br>
+                Click "Resume" to continue downloading files.
+            `;
+        }
+        
+        this.showToast('Downloads paused', 'info');
+    }
+    
+    resumeDownloads() {
+        console.log('Downloads resumed by user');
+        this.isDownloading = true;
+        this.showPauseButton();
+        this.hideResumeButton();
+        
+        // Continue with current file or next file
         const currentItem = this.downloadQueueData[this.currentDownloadIndex];
-        if (currentItem) {
-            currentItem.status = 'skipped';
-            currentItem.endTime = Date.now();
-            console.log(`Download skipped: ${currentItem.name}`);
+        if (currentItem && currentItem.status !== 'completed' && currentItem.status !== 'skipped') {
+            this.downloadCurrentFile();
+        } else {
+            this.proceedToNextDownload();
         }
         
-        this.proceedToNextDownload();
+        this.showToast('Downloads resumed', 'info');
     }
     
     onAllDownloadsComplete() {
+        console.log('All downloads completed');
+        
         this.isDownloading = false;
+        this.waitingForUserConfirmation = false;
         this.hideInstructions();
-        this.hideManualControls();
+        this.hideUserControls();
+        this.hidePauseButton();
+        this.hideResumeButton();
         
-        console.log('All downloads completed', {
-            total: this.downloadQueueData.length,
-            completed: this.completedDownloads,
-            failed: this.failedDownloads
-        });
-        
+        const completed = this.downloadQueueData.filter(item => item.status === 'completed').length;
+        const failed = this.downloadQueueData.filter(item => item.status === 'failed').length;
         const skipped = this.downloadQueueData.filter(item => item.status === 'skipped').length;
+        const total = this.downloadQueueData.length;
         
-        let message = `Downloads finished! `;
-        if (this.completedDownloads > 0) message += `${this.completedDownloads} completed`;
-        if (this.failedDownloads > 0) message += `, ${this.failedDownloads} failed`;
+        console.log('Download summary:', { total, completed, failed, skipped });
+        
+        let message = `Downloads finished! ${completed} completed`;
+        if (failed > 0) message += `, ${failed} failed`;
         if (skipped > 0) message += `, ${skipped} skipped`;
+        message += ` out of ${total} total files.`;
         
-        this.showToast(message, this.failedDownloads === 0 ? 'success' : 'warning');
+        this.showToast(message, failed === 0 ? 'success' : 'warning');
         
         // Clear selection in file manager
         if (window.App?.fileManager) {
             window.App.fileManager.clearSelection();
         }
         
-        // Auto-hide widget after delay
-        setTimeout(() => {
-            this.clearCompletedDownloads();
-        }, 5000);
-    }
-    
-    updateInstructions(currentItem) {
+        // Show completion summary in widget
         const instructionText = document.getElementById('instructionText');
-        if (instructionText && currentItem) {
-            const fileNumber = this.currentDownloadIndex + 1;
-            const totalFiles = this.downloadQueueData.length;
+        if (instructionText) {
             instructionText.innerHTML = `
-                <strong>File ${fileNumber} of ${totalFiles}:</strong><br>
-                ${currentItem.name}<br><br>
-                Please save the file when your browser prompts you, then click "Next File" to continue.
+                <strong>🎉 All Downloads Complete!</strong><br>
+                ✅ ${completed} files downloaded successfully<br>
+                ${failed > 0 ? `❌ ${failed} files failed<br>` : ''}
+                ${skipped > 0 ? `⏩ ${skipped} files skipped<br>` : ''}
+                <br><small>You can close this widget or start new downloads.</small>
             `;
         }
-    }
-    
-    showInstructions() {
-        const instructions = document.getElementById('downloadInstructions');
-        if (instructions) {
-            instructions.style.display = 'block';
-        }
-    }
-    
-    hideInstructions() {
-        const instructions = document.getElementById('downloadInstructions');
-        if (instructions) {
-            instructions.style.display = 'none';
-        }
-    }
-    
-    showManualControls() {
-        const nextButton = document.getElementById('nextFileButton');
-        const skipButton = document.getElementById('skipFileButton');
         
-        if (nextButton) nextButton.style.display = 'inline-block';
-        if (skipButton) skipButton.style.display = 'inline-block';
-    }
-    
-    hideManualControls() {
-        const nextButton = document.getElementById('nextFileButton');
-        const skipButton = document.getElementById('skipFileButton');
-        
-        if (nextButton) nextButton.style.display = 'none';
-        if (skipButton) skipButton.style.display = 'none';
-    }
-    
-    showStartButton() {
-        const startButton = document.getElementById('startDownloads');
-        if (startButton) {
-            startButton.style.display = 'inline-block';
-        }
-    }
-    
-    hideStartButton() {
-        const startButton = document.getElementById('startDownloads');
-        if (startButton) {
-            startButton.style.display = 'none';
-        }
+        // Keep widget visible but allow closing
+        // Don't auto-clear the queue so user can see the summary
     }
     
     // Direct download for individual files
@@ -914,7 +1103,6 @@ class DownloadManager {
                 const link = document.createElement('a');
                 link.href = downloadUrl;
                 link.download = fileName;
-                link.className = 'download-trigger';
                 link.style.display = 'none';
                 document.body.appendChild(link);
                 link.click();
@@ -931,6 +1119,46 @@ class DownloadManager {
         }
     }
     
+    showStartButton() {
+        const startButton = document.getElementById('startDownloads');
+        if (startButton) startButton.style.display = 'inline-block';
+    }
+    
+    hideStartButton() {
+        const startButton = document.getElementById('startDownloads');
+        if (startButton) startButton.style.display = 'none';
+    }
+    
+    showPauseButton() {
+        const pauseButton = document.getElementById('pauseDownloads');
+        if (pauseButton) pauseButton.style.display = 'inline-block';
+    }
+    
+    hidePauseButton() {
+        const pauseButton = document.getElementById('pauseDownloads');
+        if (pauseButton) pauseButton.style.display = 'none';
+    }
+    
+    showResumeButton() {
+        const resumeButton = document.getElementById('resumeDownloads');
+        if (resumeButton) resumeButton.style.display = 'inline-block';
+    }
+    
+    hideResumeButton() {
+        const resumeButton = document.getElementById('resumeDownloads');
+        if (resumeButton) resumeButton.style.display = 'none';
+    }
+    
+    showInstructions() {
+        const instructions = document.getElementById('downloadInstructions');
+        if (instructions) instructions.style.display = 'block';
+    }
+    
+    hideInstructions() {
+        const instructions = document.getElementById('downloadInstructions');
+        if (instructions) instructions.style.display = 'none';
+    }
+    
     showWidget() {
         const widget = document.getElementById('downloadWidget');
         if (widget) {
@@ -942,8 +1170,7 @@ class DownloadManager {
         const widget = document.getElementById('downloadWidget');
         if (widget && !this.isDownloading) {
             widget.classList.add('hidden');
-            this.hideStartButton();
-            setTimeout(() => this.clearCompletedDownloads(), 1000);
+            this.clearDownloadData();
         }
     }
     
@@ -973,8 +1200,10 @@ class DownloadManager {
             if (this.isDownloading) {
                 const current = this.currentDownloadIndex + 1;
                 headerText.textContent = `Downloading ${current}/${totalFiles}`;
+            } else if (totalFiles > 0) {
+                headerText.textContent = `Downloads (${completed}/${totalFiles})`;
             } else {
-                headerText.textContent = `Downloads (${totalFiles})`;
+                headerText.textContent = 'Downloads';
             }
         }
         
@@ -1018,7 +1247,10 @@ class DownloadManager {
             <div class="download-status-icon">${statusIcon}</div>
             <div class="download-info">
                 <div class="download-name" title="${this.sanitizeHTML(item.name)}">${this.sanitizeHTML(item.name)}</div>
-                <div class="download-details">${statusText}${item.size ? ` • ${this.formatFileSize(item.size)}` : ''}</div>
+                <div class="download-details">
+                    <span>${statusText}</span>
+                    ${item.size ? `<span>${this.formatFileSize(item.size)}</span>` : ''}
+                </div>
             </div>
         `;
         
@@ -1028,7 +1260,7 @@ class DownloadManager {
     getStatusIcon(status, index) {
         switch (status) {
             case 'waiting': 
-                return index === 0 ? '🎯' : `${index + 1}`;
+                return index === 0 ? '🎯' : `<span style="font-size: 12px; font-weight: bold;">${index + 1}</span>`;
             case 'current': 
                 return '<div class="download-spinner"></div>';
             case 'completed': 
@@ -1056,7 +1288,8 @@ class DownloadManager {
                     ` in ${((item.endTime - item.startTime) / 1000).toFixed(1)}s` : '';
                 return `Downloaded${duration}`;
             case 'failed': 
-                return `Failed${item.error ? `: ${item.error}` : ''}`;
+                const retryText = item.retries > 0 ? ` (retry ${item.retries})` : '';
+                return `Failed${retryText}`;
             case 'skipped': 
                 return 'Skipped by user';
             default: 
@@ -1065,10 +1298,7 @@ class DownloadManager {
     }
     
     cancelAllDownloads() {
-        if (!this.isDownloading && this.downloadQueueData.length === 0) {
-            this.showToast('No downloads to cancel', 'info');
-            return;
-        }
+        console.log('User cancelled all downloads');
         
         // Mark all pending downloads as cancelled
         this.downloadQueueData.forEach(item => {
@@ -1079,24 +1309,32 @@ class DownloadManager {
         });
         
         this.isDownloading = false;
+        this.waitingForUserConfirmation = false;
         this.hideInstructions();
-        this.hideManualControls();
+        this.hideUserControls();
+        this.hidePauseButton();
+        this.hideResumeButton();
         this.showStartButton();
         
         this.updateUI();
-        this.showToast('Downloads cancelled', 'info');
+        this.showToast('All downloads cancelled', 'info');
     }
     
-    clearCompletedDownloads() {
+    clearDownloadData() {
+        console.log('Clearing download data');
+        
         this.downloadQueueData = [];
         this.currentDownloadIndex = 0;
         this.completedDownloads = 0;
         this.failedDownloads = 0;
         this.isDownloading = false;
+        this.waitingForUserConfirmation = false;
         
         this.hideStartButton();
+        this.hidePauseButton();
+        this.hideResumeButton();
         this.hideInstructions();
-        this.hideManualControls();
+        this.hideUserControls();
         this.updateUI();
     }
     
