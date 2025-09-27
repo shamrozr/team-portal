@@ -352,36 +352,29 @@ class DownloadManager {
     downloadVideoFile(file) {
         console.log(`🎥 Special video download for: ${file.name}`);
         
-        // Google Apps Script proxy URL for video downloads (user needs to deploy this)
-        const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbxtL7OLjxf_wprAfMczlxXA72lOVl2ajTdgHA6whd9lgP01nH1sdFDatKno83wThGW3/exec';
-        
-        if (appsScriptUrl === 'YOUR_APPS_SCRIPT_URL_HERE') {
-            // If Apps Script not set up yet, fallback to Google Drive direct page
-            Utils.showInfo(`Video downloads need setup. Opening ${file.name} in Google Drive...`);
-            window.open(`https://drive.google.com/file/d/${file.id}/view?usp=sharing`, '_blank');
-            return;
-        }
+        // Your Google Apps Script proxy URL for video downloads
+        const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbxLU3QKoU_Ublngo1bD6RJMG4bmkE27AkyvGj-P6nFywlWTsyc0pX68nKHhEqehv83P/exec';
         
         try {
             // Use Google Apps Script proxy for video downloads
             const videoDownloadUrl = `${appsScriptUrl}?fileId=${file.id}&fileName=${encodeURIComponent(file.name)}`;
             
+            console.log(`Attempting video download via Apps Script: ${videoDownloadUrl}`);
+            
             // Use window.location for videos with Apps Script proxy
             window.location.href = videoDownloadUrl;
             
             // Show success message
-            Utils.showSuccess(`Starting video download: ${file.name}`);
-            
-            console.log(`Video download initiated via Apps Script: ${videoDownloadUrl}`);
+            Utils.showSuccess(`Starting video download via proxy: ${file.name}`);
             
         } catch (error) {
-            console.error('Video download failed:', error);
+            console.error('Video download via Apps Script failed:', error);
             
             // Fallback: try opening Google Drive's share page
             try {
                 const fallbackUrl = `https://drive.google.com/file/d/${file.id}/view?usp=sharing`;
                 window.open(fallbackUrl, '_blank');
-                Utils.showInfo(`Opening ${file.name} in Google Drive - click download button there`);
+                Utils.showInfo(`Apps Script failed. Opening ${file.name} in Google Drive - click download button there`);
             } catch (fallbackError) {
                 Utils.showError(`Failed to download video: ${file.name}`);
             }
@@ -424,7 +417,26 @@ class DownloadManager {
             return;
         }
         
-        this.setupBulkDownload(files);
+        // Filter out videos for ZIP downloads (Method 1 limitation)
+        const nonVideoFiles = files.filter(file => !this.isVideoFile(file));
+        const videoFiles = files.filter(file => this.isVideoFile(file));
+        
+        if (videoFiles.length > 0) {
+            Utils.showWarning(`⚠️ ${videoFiles.length} video file(s) excluded from ZIP (Method 1 limitation). Download videos individually.`);
+            console.log('Videos excluded from ZIP:', videoFiles.map(f => f.name));
+        }
+        
+        if (nonVideoFiles.length === 0) {
+            Utils.showError('Only video files selected. Method 1 cannot ZIP videos. Please download videos individually.');
+            return;
+        }
+        
+        if (nonVideoFiles.length === 1) {
+            await this.downloadSingleFile(nonVideoFiles[0]);
+            return;
+        }
+        
+        this.setupBulkDownload(nonVideoFiles);
     }
     
     setupBulkDownload(files) {
