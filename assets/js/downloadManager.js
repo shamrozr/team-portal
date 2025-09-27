@@ -1,4 +1,4 @@
-// assets/js/downloadManager.js - Method 1: Direct Download URLs with JSZip Client-Side
+// assets/js/downloadManager.js - Method 1: Direct Download URLs with JSZip Client-Side + Video Queue
 
 class DownloadManager {
     constructor() {
@@ -41,15 +41,14 @@ class DownloadManager {
         return /iPhone|iPad|iPod/i.test(navigator.userAgent);
     }
     
-    // Get multiple direct download URL formats for better video compatibility
+    // Method 1: Direct download URLs for Google Drive files
     getDirectDownloadURL(fileId) {
-        // Multiple URL formats to try for better compatibility, especially for videos
+        // Multiple URL formats to try for better compatibility
         return [
-            `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t&authuser=0`,
-            `https://drive.google.com/file/d/${fileId}/view?usp=drive_link`,
             `https://drive.google.com/uc?export=download&id=${fileId}`,
             `https://lh3.googleusercontent.com/d/${fileId}`,
-            `https://drive.google.com/uc?id=${fileId}&export=download`
+            `https://drive.google.com/uc?id=${fileId}&export=download`,
+            `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`
         ];
     }
     
@@ -189,36 +188,6 @@ class DownloadManager {
             .download-item.failed {
                 background: rgba(239, 68, 68, 0.1); border-color: #ef4444;
             }
-            .individual-download-btn {
-                padding: 4px 8px; background: #3b82f6; color: white;
-                border: none; border-radius: 4px; font-size: 11px;
-                cursor: pointer; transition: background 0.2s;
-                margin-left: 8px;
-            }
-            .individual-download-btn:hover {
-                background: #2563eb;
-            }
-            
-            .queue-info {
-                text-align: center; margin-top: 8px;
-                font-size: 12px; color: #6b7280;
-            }
-            
-            .individual-download-btn {
-                padding: 4px 8px; background: #3b82f6; color: white;
-                border: none; border-radius: 4px; font-size: 11px;
-                cursor: pointer; transition: background 0.2s;
-                margin-left: 8px;
-            }
-            .individual-download-btn:hover {
-                background: #2563eb;
-            }
-            
-            .queue-info {
-                text-align: center; margin-top: 8px;
-                font-size: 12px; color: #6b7280;
-            }
-            
             .download-item.waiting {
                 background: rgba(156, 163, 175, 0.1); border-color: #9ca3af;
             }
@@ -236,6 +205,21 @@ class DownloadManager {
             .download-details {
                 font-size: 11px; color: #6b7280;
                 display: flex; justify-content: space-between; align-items: center;
+            }
+            
+            .video-download-btn {
+                padding: 4px 8px; background: #3b82f6; color: white;
+                border: none; border-radius: 4px; font-size: 11px;
+                cursor: pointer; transition: background 0.2s;
+                margin-left: 8px;
+            }
+            .video-download-btn:hover {
+                background: #2563eb;
+            }
+            
+            .queue-info {
+                text-align: center; margin-top: 8px;
+                font-size: 12px; color: #6b7280;
             }
             
             .download-summary {
@@ -347,11 +331,11 @@ class DownloadManager {
         }
     }
     
-    // Method 1: Single file download using direct URL in same window (like before)
+    // Method 1: Single file download using direct URL in same window (unchanged from base)
     downloadSingleFile(file) {
         console.log(`🎯 Method 1: Direct download for single file: ${file.name}`);
         
-        // Use the standard direct download URL for ALL files (including videos)
+        // Use the standard direct download URL for ALL files (same as base)
         const downloadUrl = `https://drive.google.com/uc?export=download&id=${file.id}`;
         
         try {
@@ -366,39 +350,6 @@ class DownloadManager {
         } catch (error) {
             console.error('Single file download failed:', error);
             Utils.showError(`Failed to start download: ${file.name}`);
-        }
-    }
-    
-    // Special method ONLY for video files to bypass Google Drive restrictions
-    downloadVideoFile(file) {
-        console.log(`🎥 Special video download for: ${file.name}`);
-        
-        // Your Google Apps Script proxy URL for video downloads
-        const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbxtL7OLjxf_wprAfMczlxXA72lOVl2ajTdgHA6whd9lgP01nH1sdFDatKno83wThGW3/exec';
-        
-        try {
-            // Use Google Apps Script proxy for video downloads
-            const videoDownloadUrl = `${appsScriptUrl}?fileId=${file.id}&fileName=${encodeURIComponent(file.name)}`;
-            
-            console.log(`Attempting video download via Apps Script: ${videoDownloadUrl}`);
-            
-            // Use window.location for videos with Apps Script proxy
-            window.location.href = videoDownloadUrl;
-            
-            // Show success message
-            Utils.showSuccess(`Starting video download via proxy: ${file.name}`);
-            
-        } catch (error) {
-            console.error('Video download via Apps Script failed:', error);
-            
-            // Fallback: try opening Google Drive's share page
-            try {
-                const fallbackUrl = `https://drive.google.com/file/d/${file.id}/view?usp=sharing`;
-                window.open(fallbackUrl, '_blank');
-                Utils.showInfo(`Apps Script failed. Opening ${file.name} in Google Drive - click download button there`);
-            } catch (fallbackError) {
-                Utils.showError(`Failed to download video: ${file.name}`);
-            }
         }
     }
     
@@ -418,7 +369,7 @@ class DownloadManager {
         return videoExtensions.includes(extension);
     }
     
-    // Method 1: Multiple files download using JSZip (Queue-based approach)
+    // Method 1: Multiple files download (with video queue addition)
     async downloadFiles(files) {
         if (!files || files.length === 0) {
             Utils.showWarning('No files to download');
@@ -428,6 +379,7 @@ class DownloadManager {
         console.log(`🎯 Method 1: Preparing to download ${files.length} files`);
         
         if (files.length === 1) {
+            // Single file - use existing single download logic (unchanged)
             this.downloadSingleFile(files[0]);
             return;
         }
@@ -438,40 +390,19 @@ class DownloadManager {
             return;
         }
         
-        // Separate videos from other files
+        // Check if there are any videos in the selection
         const videos = files.filter(file => this.isVideoFile(file));
-        const nonVideos = files.filter(file => !this.isVideoFile(file));
         
-        if (videos.length > 0 && nonVideos.length > 0) {
-            // Mixed files: show queue for all files
-            this.setupMixedDownloadQueue(files);
-        } else if (videos.length > 0) {
-            // Only videos: show video queue
-            this.setupVideoQueue(videos);
+        if (videos.length > 0) {
+            // If there are videos, use the video queue system
+            this.setupVideoQueue(files);
         } else {
-            // Only non-videos: create ZIP normally
-            this.setupBulkDownload(nonVideos);
+            // No videos: use existing bulk download for photos/docs (unchanged)
+            this.setupBulkDownload(files);
         }
     }
     
-    setupVideoQueue(videos) {
-        this.downloadQueueData = videos.map((video, index) => ({
-            ...video,
-            status: 'waiting',
-            progress: 0,
-            error: null,
-            index: index,
-            isVideo: true
-        }));
-        
-        this.showWidget();
-        this.updateDownloadList();
-        this.showVideoQueueControls();
-        
-        Utils.showInfo(`${videos.length} videos queued. Click "Download" next to each video to download individually.`);
-    }
-    
-    setupMixedDownloadQueue(files) {
+    setupVideoQueue(files) {
         const videos = files.filter(file => this.isVideoFile(file));
         const nonVideos = files.filter(file => !this.isVideoFile(file));
         
@@ -486,48 +417,45 @@ class DownloadManager {
         
         this.showWidget();
         this.updateDownloadList();
-        this.showMixedQueueControls(nonVideos.length, videos.length);
+        this.showVideoQueueControls(nonVideos.length, videos.length);
         
-        Utils.showInfo(`${nonVideos.length} files will ZIP together. ${videos.length} videos need individual downloads.`);
+        Utils.showInfo(`Queue created: ${nonVideos.length} files for ZIP, ${videos.length} videos for individual download.`);
     }
     
-    showVideoQueueControls() {
+    showVideoQueueControls(nonVideoCount, videoCount) {
         const summaryElement = document.getElementById('downloadSummary');
         if (summaryElement) {
-            summaryElement.innerHTML = `
-                <div class="download-controls">
-                    <button class="download-btn cancel-btn" id="cancelAll">Clear Queue</button>
+            let controlsHTML = `<div class="download-controls">`;
+            
+            if (nonVideoCount > 0) {
+                controlsHTML += `<button class="download-btn start-btn" id="zipNonVideos">📦 ZIP ${nonVideoCount} Files</button>`;
+            }
+            
+            controlsHTML += `<button class="download-btn cancel-btn" id="cancelAll">Clear Queue</button>`;
+            controlsHTML += `</div>`;
+            
+            if (videoCount > 0) {
+                controlsHTML += `
                     <div class="queue-info">
-                        <small>Click "Download" next to each video</small>
+                        <small>Click "Download" next to each video to download individually</small>
                     </div>
-                </div>
-            `;
+                `;
+            }
             
-            // Rebind cancel button
+            summaryElement.innerHTML = controlsHTML;
+            
+            // Bind the new ZIP button
+            const zipBtn = document.getElementById('zipNonVideos');
+            if (zipBtn) {
+                zipBtn.addEventListener('click', () => this.zipNonVideosFromQueue());
+            }
+            
+            // Re-bind cancel button
             document.getElementById('cancelAll').addEventListener('click', () => this.cancelAllDownloads());
         }
     }
     
-    showMixedQueueControls(nonVideoCount, videoCount) {
-        const summaryElement = document.getElementById('downloadSummary');
-        if (summaryElement) {
-            summaryElement.innerHTML = `
-                <div class="download-controls">
-                    <button class="download-btn start-btn" id="downloadNonVideos">📦 ZIP ${nonVideoCount} Files</button>
-                    <button class="download-btn cancel-btn" id="cancelAll">Clear Queue</button>
-                </div>
-                <div class="queue-info" style="text-align: center; margin-top: 8px; font-size: 12px; color: #6b7280;">
-                    <small>ZIP non-videos, then click "Download" for each video individually</small>
-                </div>
-            `;
-            
-            // Bind buttons
-            document.getElementById('downloadNonVideos').addEventListener('click', () => this.downloadNonVideosFromQueue());
-            document.getElementById('cancelAll').addEventListener('click', () => this.cancelAllDownloads());
-        }
-    }
-    
-    async downloadNonVideosFromQueue() {
+    async zipNonVideosFromQueue() {
         const nonVideos = this.downloadQueueData.filter(item => !item.isVideo);
         
         if (nonVideos.length === 0) {
@@ -535,49 +463,47 @@ class DownloadManager {
             return;
         }
         
-        // Mark non-videos as processing and start ZIP download
-        nonVideos.forEach(item => {
-            item.status = 'processing';
-        });
-        this.updateDownloadList();
-        
-        // Start the ZIP process
-        this.zip = new JSZip();
-        this.zipProgress = { downloaded: 0, total: nonVideos.length };
-        
+        // Use existing ZIP logic for non-videos
+        this.isDownloading = true;
         this.showProgressSection();
-        this.updateProgressSection('Starting ZIP creation...', 0, nonVideos.length);
         
         try {
+            // Initialize JSZip
+            this.zip = new JSZip();
+            this.zipProgress = { downloaded: 0, total: nonVideos.length };
+            
+            this.updateProgressSection('Creating ZIP with non-video files...', 0, nonVideos.length);
+            
+            // Use existing downloadFileForZip method for non-videos
             const downloadPromises = nonVideos.map((item, index) => 
                 this.downloadFileForZip(item, index)
             );
             
             await Promise.allSettled(downloadPromises);
             
-            // Generate and download ZIP
+            // Use existing ZIP generation
             await this.generateAndDownloadZip();
-            
-            Utils.showSuccess(`ZIP created! ${nonVideos.filter(i => i.status === 'completed').length} files included.`);
             
         } catch (error) {
             console.error('ZIP creation failed:', error);
             Utils.showError(`ZIP creation failed: ${error.message}`);
+        } finally {
+            this.isDownloading = false;
         }
     }
     
-    downloadIndividualVideo(videoItem) {
-        console.log(`🎥 Individual video download: ${videoItem.name}`);
+    downloadVideoFromQueue(videoItem) {
+        console.log(`Individual video download: ${videoItem.name}`);
         
         // Mark as downloading
         videoItem.status = 'downloading';
         this.updateDownloadList();
         
-        // Use the same single download method
+        // Use same method as single downloads (window.location.href)
         const downloadUrl = `https://drive.google.com/uc?export=download&id=${videoItem.id}`;
         
         try {
-            // Direct download in same window
+            // Direct download in same window (same as single downloads)
             window.location.href = downloadUrl;
             
             // Mark as completed after short delay
@@ -658,46 +584,26 @@ class DownloadManager {
             
             console.log(`Downloading file ${index + 1}/${this.downloadQueueData.length}: ${item.name}`);
             
-            // For ZIP downloads, only include non-video files
             const urls = this.getDirectDownloadURL(item.id);
             let success = false;
             
             for (let i = 0; i < urls.length && !success; i++) {
                 try {
-                    console.log(`Trying URL ${i + 1}/${urls.length} for ${item.name}`);
-                    
-                    const response = await fetch(urls[i], {
-                        method: 'GET',
-                        headers: {
-                            'User-Agent': navigator.userAgent,
-                            'Referer': 'https://drive.google.com/'
-                        }
-                    });
+                    const response = await fetch(urls[i]);
                     
                     if (response.ok) {
                         const blob = await response.blob();
-                        console.log(`URL ${i + 1} returned ${blob.size} bytes for ${item.name}`);
+                        this.zip.file(item.name, blob);
                         
-                        // Accept any reasonable file size for non-videos
-                        if (blob.size > 100) {
-                            this.zip.file(item.name, blob);
-                            
-                            item.status = 'completed';
-                            this.zipProgress.downloaded++;
-                            success = true;
-                            
-                            console.log(`✅ Successfully downloaded ${item.name} (${blob.size} bytes)`);
-                            
-                            this.updateProgressSection(
-                                `Downloaded ${this.zipProgress.downloaded}/${this.zipProgress.total} files...`,
-                                this.zipProgress.downloaded,
-                                this.zipProgress.total
-                            );
-                        } else {
-                            console.warn(`File ${item.name} size ${blob.size} bytes too small, trying next URL...`);
-                        }
-                    } else {
-                        console.warn(`URL ${i + 1} failed with status: ${response.status}`);
+                        item.status = 'completed';
+                        this.zipProgress.downloaded++;
+                        success = true;
+                        
+                        this.updateProgressSection(
+                            `Downloaded ${this.zipProgress.downloaded}/${this.zipProgress.total} files...`,
+                            this.zipProgress.downloaded,
+                            this.zipProgress.total
+                        );
                     }
                 } catch (error) {
                     console.warn(`URL ${i + 1} failed for ${item.name}:`, error.message);
@@ -705,7 +611,7 @@ class DownloadManager {
             }
             
             if (!success) {
-                throw new Error('All URLs failed or returned files too small');
+                throw new Error('All URLs failed');
             }
             
         } catch (error) {
@@ -763,7 +669,6 @@ class DownloadManager {
         URL.revokeObjectURL(url);
     }
     
-    // Test Method 1
     testMethod1() {
         console.log('🧪 Testing Method 1: Direct Download + JSZip');
         
@@ -783,6 +688,7 @@ class DownloadManager {
             Utils.showError(`Test failed: ${error.message}`);
         }
     }
+    
     
     // UI Helper Methods
     showWidget() {
@@ -829,47 +735,6 @@ class DownloadManager {
             const percentage = total > 0 ? (current / total) * 100 : 0;
             progressFill.style.width = `${percentage}%`;
         }
-    }
-    
-    updateDownloadList() {
-        const listElement = document.getElementById('downloadList');
-        if (!listElement) return;
-        
-        listElement.innerHTML = '';
-        
-        this.downloadQueueData.forEach(item => {
-            const itemElement = document.createElement('div');
-            itemElement.className = `download-item ${item.status}`;
-            
-            let icon = '⏳';
-            if (item.status === 'completed') icon = '✅';
-            else if (item.status === 'failed') icon = '❌';
-            else if (item.status === 'current') icon = '⬇️';
-            else if (item.status === 'skipped') icon = '⏩';
-            else if (item.status === 'downloading') icon = '📥';
-            else if (item.status === 'processing') icon = '🔄';
-            
-            // Add download button for videos
-            const downloadButton = item.isVideo && (item.status === 'waiting' || item.status === 'failed') ? 
-                `<button class="individual-download-btn" onclick="window.App.downloadManager.downloadIndividualVideo(window.App.downloadManager.downloadQueueData[${item.index}])">
-                    📥 Download
-                </button>` : '';
-            
-            itemElement.innerHTML = `
-                <div class="download-status-icon">${icon}</div>
-                <div class="download-info">
-                    <div class="download-name">${Utils.sanitizeHTML(item.name)}</div>
-                    <div class="download-details">
-                        <span>${item.status}${item.isVideo ? ' (video)' : ''}</span>
-                        ${item.error ? `<span style="color: #ef4444;">${item.error}</span>` : ''}
-                        ${item.warning ? `<span style="color: #f59e0b;">${item.warning}</span>` : ''}
-                    </div>
-                </div>
-                ${downloadButton}
-            `;
-            
-            listElement.appendChild(itemElement);
-        });
     }
     
     cancelAllDownloads() {
