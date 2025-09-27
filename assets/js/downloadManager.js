@@ -353,36 +353,28 @@ class DownloadManager {
         console.log(`🎥 Special video download for: ${file.name}`);
         
         try {
-            // Create hidden iframe specifically for video downloads
-            const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            iframe.style.position = 'absolute';
-            iframe.style.top = '-9999px';
-            iframe.style.left = '-9999px';
-            iframe.style.width = '1px';
-            iframe.style.height = '1px';
+            // Try Google Drive's internal large file download URL
+            const videoDownloadUrl = `https://drive.usercontent.google.com/download?id=${file.id}&export=download&authuser=0&confirm=t`;
             
-            // Use Google Drive's file download URL that forces full file download
-            const videoDownloadUrl = `https://drive.google.com/file/d/${file.id}/view?usp=drive_link`;
-            
-            iframe.src = videoDownloadUrl;
-            document.body.appendChild(iframe);
+            // Use window.location for videos too, but with the special URL
+            window.location.href = videoDownloadUrl;
             
             // Show success message
-            Utils.showSuccess(`Opening video download: ${file.name}`);
+            Utils.showSuccess(`Starting video download: ${file.name}`);
             
-            // Clean up iframe after 10 seconds
-            setTimeout(() => {
-                if (iframe.parentNode) {
-                    document.body.removeChild(iframe);
-                }
-            }, 10000);
-            
-            console.log(`Video download initiated via iframe: ${videoDownloadUrl}`);
+            console.log(`Video download initiated with large file URL: ${videoDownloadUrl}`);
             
         } catch (error) {
             console.error('Video download failed:', error);
-            Utils.showError(`Failed to download video: ${file.name}`);
+            
+            // Fallback: try opening Google Drive's share page
+            try {
+                const fallbackUrl = `https://drive.google.com/file/d/${file.id}/view?usp=sharing`;
+                window.open(fallbackUrl, '_blank');
+                Utils.showInfo(`Opening ${file.name} in Google Drive - click download button there`);
+            } catch (fallbackError) {
+                Utils.showError(`Failed to download video: ${file.name}`);
+            }
         }
     }
     
