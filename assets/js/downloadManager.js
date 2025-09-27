@@ -1,4 +1,4 @@
-// assets/js/downloadManager.js - Popup-free Android download manager
+// assets/js/downloadManager.js - Force download manager for Android
 
 class DownloadManager {
     constructor() {
@@ -40,40 +40,43 @@ class DownloadManager {
         return /iPhone|iPad|iPod/i.test(navigator.userAgent);
     }
     
-    // Generate popup-free download URLs
-    getPopupFreeDownloadURL(fileId) {
+    // Generate force download URLs - different approach for Android
+    getForceDownloadURL(fileId, fileName) {
         if (this.isAndroid) {
-            // Method 1: Use Google Apps Script proxy approach
-            // This completely bypasses Google Drive interface
-            return `https://script.google.com/macros/exec?url=https://drive.google.com/uc?export=download%26id=${fileId}`;
+            // For Android: Use export URL with additional parameters to force download
+            return `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t&authuser=0&format=original`;
         }
         
         if (this.isIOS) {
-            // iOS: Use direct download with additional parameters
-            return `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t&authuser=0`;
+            return `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`;
         }
         
-        // Desktop: Standard URL
+        // Desktop
         return `https://drive.google.com/uc?export=download&id=${fileId}`;
     }
     
-    // Alternative popup-free methods for Android
-    getAndroidDirectURLs(fileId) {
+    // Android-specific download methods that force actual download
+    getAndroidForceDownloadMethods(fileId, fileName) {
+        const encodedFileName = encodeURIComponent(fileName);
+        
         return [
-            // Method 1: Direct content URL (most effective)
-            `https://lh3.googleusercontent.com/d/${fileId}`,
+            // Method 1: Direct export with Content-Disposition header simulation
+            {
+                url: `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`,
+                method: 'iframe_force'
+            },
             
-            // Method 2: Docs viewer direct download
-            `https://docs.google.com/uc?export=download&id=${fileId}&authuser=0&confirm=t`,
+            // Method 2: Use blob approach to force download
+            {
+                url: `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t&authuser=0`,
+                method: 'blob_download'
+            },
             
-            // Method 3: Alternative export URL
-            `https://drive.google.com/u/0/uc?id=${fileId}&export=download&confirm=t&authuser=0`,
-            
-            // Method 4: Legacy direct download
-            `https://drive.google.com/file/d/${fileId}/view?usp=sharing&export=download`,
-            
-            // Method 5: Raw content access
-            `https://drive.google.com/thumbnail?sz=w10000-h10000&id=${fileId}`
+            // Method 3: Window location with force download headers
+            {
+                url: `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t&format=original&disposition=attachment`,
+                method: 'window_force'
+            }
         ];
     }
     
@@ -140,8 +143,8 @@ class DownloadManager {
         if (instructionText) {
             instructionText.innerHTML = `
                 <strong>📱 File download may be complete!</strong><br>
-                If you've saved the file, click "Next File" to continue.<br>
-                If not, please save it first, then click "Next File".
+                Check your Downloads folder or notification bar.<br>
+                If the file downloaded, click "Next File" to continue.
             `;
         }
         
@@ -170,9 +173,9 @@ class DownloadManager {
                 </div>
             </div>
             <div class="download-body" id="downloadBody">
-                <div class="download-tip" id="downloadTip" style="display: none;">
-                    <div class="tip-content">
-                        <p id="tipText">💡 Android Tip: If you see a Google popup, just click "Cancel" - the download will still work!</p>
+                <div class="android-notice" id="androidNotice" style="display: none;">
+                    <div class="notice-content">
+                        <p id="noticeText">🤖 Android: Force download mode active</p>
                     </div>
                 </div>
                 <div class="download-instructions" id="downloadInstructions" style="display: none;">
@@ -180,17 +183,17 @@ class DownloadManager {
                         <p id="instructionText">Preparing downloads...</p>
                         <div class="instruction-buttons">
                             <button class="btn btn-primary" id="nextFileButton" style="display: none;">
-                                ✅ File Saved - Next File
+                                ✅ File Downloaded - Next File
                             </button>
                             <button class="btn btn-warning" id="retryFileButton" style="display: none;">
-                                🔄 Retry This File
+                                🔄 Try Different Method
                             </button>
                             <button class="btn btn-secondary" id="skipFileButton" style="display: none;">
                                 ⏩ Skip This File
                             </button>
                         </div>
                         <div class="download-timer" id="downloadTimer" style="display: none;">
-                            <small>Download started: <span id="timerDisplay">0s</span> ago</small>
+                            <small>Download attempt: <span id="timerDisplay">0s</span> ago</small>
                         </div>
                     </div>
                 </div>
@@ -296,15 +299,15 @@ class DownloadManager {
                 flex-direction: column;
             }
             
-            .download-tip {
-                background: linear-gradient(135deg, #ecfdf5, #d1fae5);
-                border-bottom: 1px solid #10b981;
+            .android-notice {
+                background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+                border-bottom: 1px solid #0ea5e9;
                 padding: 12px 16px;
                 text-align: center;
             }
             
-            .tip-content {
-                color: #065f46;
+            .notice-content {
+                color: #0c4a6e;
                 font-size: 12px;
                 font-weight: 500;
             }
@@ -651,16 +654,18 @@ class DownloadManager {
         document.head.appendChild(style);
     }
     
-    showAndroidTip() {
+    showAndroidNotice() {
         if (this.isAndroid) {
-            const tipElement = document.getElementById('downloadTip');
-            if (tipElement) {
-                tipElement.style.display = 'block';
+            const noticeElement = document.getElementById('androidNotice');
+            if (noticeElement) {
+                noticeElement.style.display = 'block';
                 
-                // Hide tip after 8 seconds
+                // Keep notice visible during downloads
                 setTimeout(() => {
-                    tipElement.style.display = 'none';
-                }, 8000);
+                    if (!this.isDownloading) {
+                        noticeElement.style.display = 'none';
+                    }
+                }, 5000);
             }
         }
     }
@@ -766,7 +771,8 @@ class DownloadManager {
             retries: 0,
             startTime: null,
             endTime: null,
-            index: index
+            index: index,
+            currentMethod: 0 // Track which download method is being used
         }));
         
         this.downloadQueueData = queueItems;
@@ -775,8 +781,8 @@ class DownloadManager {
         this.showStartButton();
         this.updateUI();
         
-        // Show Android tip
-        this.showAndroidTip();
+        // Show Android notice
+        this.showAndroidNotice();
         
         this.showToast(`${files.length} files added to download queue. Click "Start Downloads" to begin.`, 'info');
     }
@@ -837,7 +843,7 @@ class DownloadManager {
         console.log(`Triggering download for: ${item.name} on ${this.isAndroid ? 'Android' : this.isIOS ? 'iOS' : 'Desktop'}`);
         
         if (this.isAndroid) {
-            this.triggerAndroidDownload(item);
+            this.triggerAndroidForceDownload(item);
         } else if (this.isIOS) {
             this.triggerIOSDownload(item);
         } else {
@@ -845,13 +851,32 @@ class DownloadManager {
         }
     }
     
-    triggerAndroidDownload(item) {
+    triggerAndroidForceDownload(item) {
         try {
-            console.log(`Android download for: ${item.name}`);
+            console.log(`Android force download for: ${item.name}`);
             
-            // Method 1: Try direct content URL first (most popup-free)
-            const directURLs = this.getAndroidDirectURLs(item.id);
-            this.tryAndroidDownloadMethod(item, directURLs, 0);
+            // Get download method based on current retry
+            const methods = this.getAndroidForceDownloadMethods(item.id, item.name);
+            const currentMethod = methods[item.currentMethod] || methods[0];
+            
+            console.log(`Using Android method: ${currentMethod.method}`);
+            
+            switch (currentMethod.method) {
+                case 'iframe_force':
+                    this.androidIframeForceDownload(item, currentMethod.url);
+                    break;
+                    
+                case 'blob_download':
+                    this.androidBlobDownload(item, currentMethod.url);
+                    break;
+                    
+                case 'window_force':
+                    this.androidWindowForceDownload(item, currentMethod.url);
+                    break;
+                    
+                default:
+                    this.androidIframeForceDownload(item, currentMethod.url);
+            }
             
         } catch (error) {
             console.error(`Android download failed for ${item.name}:`, error);
@@ -864,758 +889,10 @@ class DownloadManager {
         }, 2000);
     }
     
-    async tryAndroidDownloadMethod(item, urls, methodIndex) {
-        if (methodIndex >= urls.length) {
-            console.log(`All Android download methods failed for: ${item.name}`);
-            this.markDownloadFailed(item, 'All download methods failed');
-            return;
-        }
+    androidIframeForceDownload(item, downloadUrl) {
+        console.log(`Android iframe force download: ${downloadUrl}`);
         
-        const downloadUrl = urls[methodIndex];
-        console.log(`Trying Android method ${methodIndex + 1}: ${downloadUrl}`);
-        
-        try {
-            // Create a hidden iframe to test the URL first
-            const testFrame = document.createElement('iframe');
-            testFrame.style.cssText = 'display: none; width: 0; height: 0;';
-            testFrame.src = downloadUrl;
-            
-            testFrame.onload = () => {
-                console.log(`Android method ${methodIndex + 1} loaded successfully`);
-                // If iframe loads, try direct download
-                this.executeAndroidDownload(item, downloadUrl);
-                document.body.removeChild(testFrame);
-            };
-            
-            testFrame.onerror = () => {
-                console.log(`Android method ${methodIndex + 1} failed, trying next...`);
-                document.body.removeChild(testFrame);
-                // Try next method after short delay
-                setTimeout(() => {
-                    this.tryAndroidDownloadMethod(item, urls, methodIndex + 1);
-                }, 1000);
-            };
-            
-            document.body.appendChild(testFrame);
-            
-            // Timeout after 3 seconds if no response
-            setTimeout(() => {
-                if (testFrame.parentNode) {
-                    document.body.removeChild(testFrame);
-                    setTimeout(() => {
-                        this.tryAndroidDownloadMethod(item, urls, methodIndex + 1);
-                    }, 500);
-                }
-            }, 3000);
-            
-        } catch (error) {
-            console.error(`Error with Android method ${methodIndex + 1}:`, error);
-            setTimeout(() => {
-                this.tryAndroidDownloadMethod(item, urls, methodIndex + 1);
-            }, 500);
-        }
-    }
-    
-    executeAndroidDownload(item, downloadUrl) {
-        try {
-            console.log(`Executing Android download: ${downloadUrl}`);
-            
-            // Use multiple approaches simultaneously for better success rate
-            
-            // Approach 1: Direct link click
-            const link = document.createElement('a');
-            link.href = downloadUrl;
-            link.download = item.name || 'download';
-            link.target = '_self';
-            link.rel = 'noopener noreferrer';
-            link.style.display = 'none';
-            
-            // Add click handler to prevent popup behavior
-            link.addEventListener('click', (e) => {
-                e.stopPropagation();
-                console.log('Android download link clicked');
-            });
-            
-            document.body.appendChild(link);
-            
-            // Use both click methods
-            link.click();
-            
-            // Also try programmatic click
-            const clickEvent = new MouseEvent('click', {
-                view: window,
-                bubbles: true,
-                cancelable: true
-            });
-            link.dispatchEvent(clickEvent);
-            
-            setTimeout(() => {
-                document.body.removeChild(link);
-            }, 1000);
-            
-            // Approach 2: Window.open with specific parameters to force download
-            setTimeout(() => {
-                try {
-                    const downloadWindow = window.open(downloadUrl, '_self');
-                    // Close immediately if it opened a new window
-                    if (downloadWindow && downloadWindow !== window) {
-                        downloadWindow.close();
-                    }
-                } catch (e) {
-                    console.log('Window.open method failed, continuing...');
-                }
-            }, 500);
-            
-            // Approach 3: Hidden iframe as backup
-            setTimeout(() => {
-                const iframe = document.createElement('iframe');
-                iframe.style.cssText = 'display: none; width: 0; height: 0; border: none;';
-                iframe.src = downloadUrl;
-                document.body.appendChild(iframe);
-                
-                setTimeout(() => {
-                    document.body.removeChild(iframe);
-                }, 3000);
-            }, 1000);
-            
-            console.log(`Android download methods executed for: ${item.name}`);
-            
-        } catch (error) {
-            console.error(`Error executing Android download for ${item.name}:`, error);
-        }
-    }
-    
-    triggerIOSDownload(item) {
-        try {
-            const downloadUrl = this.getPopupFreeDownloadURL(item.id);
-            console.log(`iOS download URL: ${downloadUrl}`);
-            
-            const link = document.createElement('a');
-            link.href = downloadUrl;
-            link.download = item.name;
-            link.style.display = 'none';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            console.log(`iOS download triggered for: ${item.name}`);
-            
-        } catch (error) {
-            console.error(`iOS download failed for ${item.name}:`, error);
-            this.markDownloadFailed(item, error.message);
-        }
-        
-        setTimeout(() => {
-            this.waitingForUserConfirmation = true;
-            this.showUserControls();
-        }, 2000);
-    }
-    
-    triggerDesktopDownload(item) {
-        try {
-            const downloadUrl = this.getPopupFreeDownloadURL(item.id);
-            console.log(`Desktop download URL: ${downloadUrl}`);
-            
-            this.downloadFrame.src = downloadUrl;
-            console.log(`Desktop download triggered for: ${item.name}`);
-            
-        } catch (error) {
-            console.error(`Desktop download failed for ${item.name}:`, error);
-            this.markDownloadFailed(item, error.message);
-        }
-        
-        setTimeout(() => {
-            this.waitingForUserConfirmation = true;
-            this.showUserControls();
-        }, 2000);
-    }
-    
-    waitForUserConfirmation(item) {
-        setTimeout(() => {
-            if (item.status === 'current' && this.waitingForUserConfirmation) {
-                this.updateInstructions(item, 'waiting');
-            }
-        }, 3000);
-        
-        setTimeout(() => {
-            if (item.status === 'current' && this.waitingForUserConfirmation) {
-                this.showAdvancementSuggestion();
-            }
-        }, 8000);
-        
-        setTimeout(() => {
-            if (item.status === 'current' && this.waitingForUserConfirmation) {
-                this.manualAdvanceRequired = true;
-                this.updateInstructions(item, 'manual');
-            }
-        }, 15000);
-    }
-    
-    updateInstructions(currentItem, phase = 'downloading') {
-        const instructionText = document.getElementById('instructionText');
-        if (!instructionText || !currentItem) return;
-        
-        const fileNumber = this.currentDownloadIndex + 1;
-        const totalFiles = this.downloadQueueData.length;
-        
-        switch (phase) {
-            case 'downloading':
-                let downloadingMessage = `
-                    <strong>📥 Downloading File ${fileNumber} of ${totalFiles}</strong><br>
-                    <em>${currentItem.name}</em><br><br>
-                `;
-                
-                if (this.isAndroid) {
-                    downloadingMessage += `🤖 Android: Using multiple download methods to avoid popups.<br>`;
-                    downloadingMessage += `<small>💡 If you see a Google popup, just click "Cancel" - the download will still work!</small>`;
-                } else if (this.isIOS) {
-                    downloadingMessage += `🍎 iOS: Optimized download started.`;
-                } else {
-                    downloadingMessage += `💻 Desktop: Download started.`;
-                }
-                
-                instructionText.innerHTML = downloadingMessage;
-                break;
-                
-            case 'waiting':
-                let waitingMessage = `
-                    <strong>💾 Please Check Your Downloads</strong><br>
-                    <em>${currentItem.name}</em><br><br>
-                `;
-                
-                if (this.isAndroid) {
-                    waitingMessage += `🤖 Android: Check your Downloads folder or notification bar.<br>`;
-                    waitingMessage += `💡 If you saw a Google popup and clicked "Cancel", the file should still be downloading!<br><br>`;
-                } else {
-                    waitingMessage += `If your browser showed a download dialog, please save the file.<br><br>`;
-                }
-                
-                waitingMessage += `Once you've confirmed the file is downloading/saved, click "File Saved - Next File" below.`;
-                instructionText.innerHTML = waitingMessage;
-                break;
-                
-            case 'manual':
-                instructionText.innerHTML = `
-                    <strong>⏳ Waiting for Your Confirmation</strong><br>
-                    <em>${currentItem.name}</em><br><br>
-                    <span style="color: #dc2626;">Please confirm the file status:</span><br>
-                    • If downloading/saved ✅ → Click "File Saved - Next File"<br>
-                    • If nothing happened ❌ → Click "Retry This File"<br>
-                    • To skip → Click "Skip This File"<br><br>
-                    ${this.isAndroid ? '<small>🤖 Remember: Clicking "Cancel" on Google popups is OK!</small>' : ''}
-                `;
-                break;
-        }
-    }
-    
-    startDownloadTimer() {
-        const timerDisplay = document.getElementById('timerDisplay');
-        const timerContainer = document.getElementById('downloadTimer');
-        
-        if (!timerDisplay || !timerContainer) return;
-        
-        timerContainer.style.display = 'block';
-        
-        const updateTimer = () => {
-            if (this.downloadStartTime && this.waitingForUserConfirmation) {
-                const elapsed = Math.floor((Date.now() - this.downloadStartTime) / 1000);
-                timerDisplay.textContent = `${elapsed}s`;
-                setTimeout(updateTimer, 1000);
-            } else {
-                timerContainer.style.display = 'none';
-            }
-        };
-        
-        updateTimer();
-    }
-    
-    showUserControls() {
-        const nextButton = document.getElementById('nextFileButton');
-        const retryButton = document.getElementById('retryFileButton');
-        const skipButton = document.getElementById('skipFileButton');
-        
-        if (nextButton) {
-            nextButton.style.display = 'block';
-            nextButton.style.animation = '';
-        }
-        if (retryButton) retryButton.style.display = 'block';
-        if (skipButton) skipButton.style.display = 'block';
-    }
-    
-    hideUserControls() {
-        const nextButton = document.getElementById('nextFileButton');
-        const retryButton = document.getElementById('retryFileButton');
-        const skipButton = document.getElementById('skipFileButton');
-        
-        if (nextButton) nextButton.style.display = 'none';
-        if (retryButton) retryButton.style.display = 'none';
-        if (skipButton) skipButton.style.display = 'none';
-        
-        const timerContainer = document.getElementById('downloadTimer');
-        if (timerContainer) timerContainer.style.display = 'none';
-    }
-    
-    proceedToNextDownload() {
-        console.log('User confirmed file saved, proceeding to next download');
-        
-        const currentItem = this.downloadQueueData[this.currentDownloadIndex];
-        if (currentItem && currentItem.status === 'current') {
-            this.markDownloadCompleted(currentItem);
-        }
-        
-        this.hideUserControls();
-        this.waitingForUserConfirmation = false;
-        this.manualAdvanceRequired = false;
-        this.currentDownloadIndex++;
-        
-        if (this.currentDownloadIndex < this.downloadQueueData.length) {
-            setTimeout(() => {
-                this.downloadCurrentFile();
-            }, 1000);
-        } else {
-            this.onAllDownloadsComplete();
-        }
-    }
-    
-    retryCurrentDownload() {
-        console.log('User requested retry for current download');
-        
-        const currentItem = this.downloadQueueData[this.currentDownloadIndex];
-        if (currentItem) {
-            currentItem.retries = (currentItem.retries || 0) + 1;
-            currentItem.status = 'waiting';
-            
-            this.hideUserControls();
-            this.waitingForUserConfirmation = false;
-            this.manualAdvanceRequired = false;
-            
-            setTimeout(() => {
-                this.downloadCurrentFile();
-            }, 1000);
-        }
-    }
-    
-    skipCurrentDownload() {
-        console.log('User requested to skip current download');
-        
-        const currentItem = this.downloadQueueData[this.currentDownloadIndex];
-        if (currentItem) {
-            currentItem.status = 'skipped';
-            currentItem.endTime = Date.now();
-        }
-        
-        this.hideUserControls();
-        this.waitingForUserConfirmation = false;
-        this.manualAdvanceRequired = false;
-        this.currentDownloadIndex++;
-        
-        if (this.currentDownloadIndex < this.downloadQueueData.length) {
-            setTimeout(() => {
-                this.downloadCurrentFile();
-            }, 1000);
-        } else {
-            this.onAllDownloadsComplete();
-        }
-    }
-    
-    markDownloadCompleted(item) {
-        item.status = 'completed';
-        item.endTime = Date.now();
-        item.progress = 100;
-        this.completedDownloads++;
-        
-        console.log(`Download completed: ${item.name}`);
-        this.updateUI();
-    }
-    
-    markDownloadFailed(item, error) {
-        item.status = 'failed';
-        item.error = error || 'Download failed';
-        item.endTime = Date.now();
-        this.failedDownloads++;
-        
-        console.log(`Download failed: ${item.name} - ${error}`);
-        this.updateUI();
-        
-        setTimeout(() => {
-            if (item.status === 'failed') {
-                this.showUserControls();
-                this.updateInstructions(item, 'manual');
-            }
-        }, 1000);
-    }
-    
-    pauseDownloads() {
-        console.log('Downloads paused by user');
-        this.isDownloading = false;
-        this.showResumeButton();
-        this.hidePauseButton();
-        
-        const instructionText = document.getElementById('instructionText');
-        if (instructionText) {
-            instructionText.innerHTML = `
-                <strong>⏸️ Downloads Paused</strong><br>
-                Click "Resume" to continue downloading files.
-            `;
-        }
-        
-        this.showToast('Downloads paused', 'info');
-    }
-    
-    resumeDownloads() {
-        console.log('Downloads resumed by user');
-        this.isDownloading = true;
-        this.showPauseButton();
-        this.hideResumeButton();
-        
-        const currentItem = this.downloadQueueData[this.currentDownloadIndex];
-        if (currentItem && currentItem.status !== 'completed' && currentItem.status !== 'skipped') {
-            this.downloadCurrentFile();
-        } else {
-            this.proceedToNextDownload();
-        }
-        
-        this.showToast('Downloads resumed', 'info');
-    }
-    
-    onAllDownloadsComplete() {
-        console.log('All downloads completed');
-        
-        this.isDownloading = false;
-        this.waitingForUserConfirmation = false;
-        this.hideInstructions();
-        this.hideUserControls();
-        this.hidePauseButton();
-        this.hideResumeButton();
-        
-        const completed = this.downloadQueueData.filter(item => item.status === 'completed').length;
-        const failed = this.downloadQueueData.filter(item => item.status === 'failed').length;
-        const skipped = this.downloadQueueData.filter(item => item.status === 'skipped').length;
-        const total = this.downloadQueueData.length;
-        
-        console.log('Download summary:', { total, completed, failed, skipped });
-        
-        let message = `Downloads finished! ${completed} completed`;
-        if (failed > 0) message += `, ${failed} failed`;
-        if (skipped > 0) message += `, ${skipped} skipped`;
-        message += ` out of ${total} total files.`;
-        
-        this.showToast(message, failed === 0 ? 'success' : 'warning');
-        
-        if (window.App?.fileManager) {
-            window.App.fileManager.clearSelection();
-        }
-        
-        const instructionText = document.getElementById('instructionText');
-        if (instructionText) {
-            instructionText.innerHTML = `
-                <strong>🎉 All Downloads Complete!</strong><br>
-                ✅ ${completed} files downloaded successfully<br>
-                ${failed > 0 ? `❌ ${failed} files failed<br>` : ''}
-                ${skipped > 0 ? `⏩ ${skipped} files skipped<br>` : ''}
-                <br><small>You can close this widget or start new downloads.</small>
-            `;
-        }
-    }
-    
-    downloadSingleFileDirectly(fileId, fileName) {
-        console.log(`Direct download for: ${fileName}`);
-        
-        if (this.isAndroid) {
-            // Show tip for single downloads too
-            this.showAndroidTip();
-            
-            // Use multiple Android methods for single file
-            const directURLs = this.getAndroidDirectURLs(fileId);
-            
-            // Try each method with a delay
-            directURLs.forEach((url, index) => {
-                setTimeout(() => {
-                    this.executeAndroidDownload({ id: fileId, name: fileName }, url);
-                }, index * 1000);
-            });
-            
-            this.showToast(`🤖 Android: Multiple download methods started for ${fileName}`, 'success');
-        } else {
-            const downloadUrl = this.getPopupFreeDownloadURL(fileId);
-            
-            try {
-                if (this.isIOS) {
-                    const link = document.createElement('a');
-                    link.href = downloadUrl;
-                    link.download = fileName;
-                    link.style.display = 'none';
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    
-                    this.showToast(`🍎 iOS: Download started for ${fileName}`, 'success');
-                } else {
-                    this.downloadFrame.src = downloadUrl;
-                    this.showToast(`💻 Desktop: Download started for ${fileName}`, 'success');
-                }
-                
-            } catch (error) {
-                console.error(`Download failed for ${fileName}:`, error);
-                this.showToast(`Download failed: ${fileName}`, 'error');
-            }
-        }
-    }
-    
-    showStartButton() {
-        const startButton = document.getElementById('startDownloads');
-        if (startButton) startButton.style.display = 'inline-block';
-    }
-    
-    hideStartButton() {
-        const startButton = document.getElementById('startDownloads');
-        if (startButton) startButton.style.display = 'none';
-    }
-    
-    showPauseButton() {
-        const pauseButton = document.getElementById('pauseDownloads');
-        if (pauseButton) pauseButton.style.display = 'inline-block';
-    }
-    
-    hidePauseButton() {
-        const pauseButton = document.getElementById('pauseDownloads');
-        if (pauseButton) pauseButton.style.display = 'none';
-    }
-    
-    showResumeButton() {
-        const resumeButton = document.getElementById('resumeDownloads');
-        if (resumeButton) resumeButton.style.display = 'inline-block';
-    }
-    
-    hideResumeButton() {
-        const resumeButton = document.getElementById('resumeDownloads');
-        if (resumeButton) resumeButton.style.display = 'none';
-    }
-    
-    showInstructions() {
-        const instructions = document.getElementById('downloadInstructions');
-        if (instructions) instructions.style.display = 'block';
-    }
-    
-    hideInstructions() {
-        const instructions = document.getElementById('downloadInstructions');
-        if (instructions) instructions.style.display = 'none';
-    }
-    
-    showWidget() {
-        const widget = document.getElementById('downloadWidget');
-        if (widget) {
-            widget.classList.remove('hidden');
-        }
-    }
-    
-    hideWidget() {
-        const widget = document.getElementById('downloadWidget');
-        if (widget && !this.isDownloading) {
-            widget.classList.add('hidden');
-            this.clearDownloadData();
-        }
-    }
-    
-    toggleWidget() {
-        const widget = document.getElementById('downloadWidget');
-        const toggle = document.getElementById('downloadToggle');
-        
-        if (widget.classList.contains('minimized')) {
-            widget.classList.remove('minimized');
-            toggle.textContent = '▼';
-        } else {
-            widget.classList.add('minimized');
-            toggle.textContent = '▲';
-        }
-    }
-    
-    updateUI() {
-        const totalFiles = this.downloadQueueData.length;
-        const completed = this.downloadQueueData.filter(item => 
-            item.status === 'completed' || item.status === 'skipped'
-        ).length;
-        const progress = totalFiles > 0 ? (completed / totalFiles) * 100 : 0;
-        
-        const headerText = document.getElementById('downloadHeaderText');
-        if (headerText) {
-            if (this.isDownloading) {
-                const current = this.currentDownloadIndex + 1;
-                headerText.textContent = `Downloading ${current}/${totalFiles}`;
-            } else if (totalFiles > 0) {
-                headerText.textContent = `Downloads (${completed}/${totalFiles})`;
-            } else {
-                headerText.textContent = 'Downloads';
-            }
-        }
-        
-        const progressText = document.getElementById('downloadProgress');
-        const progressFill = document.getElementById('progressFill');
-        
-        if (progressText) {
-            progressText.textContent = `${completed} of ${totalFiles} files`;
-        }
-        
-        if (progressFill) {
-            progressFill.style.width = `${progress}%`;
-        }
-        
-        this.updateQueueUI();
-    }
-    
-    updateQueueUI() {
-        const downloadList = document.getElementById('downloadList');
-        if (!downloadList) return;
-        
-        downloadList.innerHTML = '';
-        
-        this.downloadQueueData.forEach((item, index) => {
-            const itemElement = this.createQueueItemElement(item, index);
-            downloadList.appendChild(itemElement);
-        });
-    }
-    
-    createQueueItemElement(item, index) {
-        const element = document.createElement('div');
-        element.className = `download-item ${item.status}`;
-        element.setAttribute('data-id', item.id);
-        element.setAttribute('data-index', index);
-        
-        const statusIcon = this.getStatusIcon(item.status, index);
-        const statusText = this.getStatusText(item);
-        
-        element.innerHTML = `
-            <div class="download-status-icon">${statusIcon}</div>
-            <div class="download-info">
-                <div class="download-name" title="${this.sanitizeHTML(item.name)}">${this.sanitizeHTML(item.name)}</div>
-                <div class="download-details">
-                    <span>${statusText}</span>
-                    ${item.size ? `<span>${this.formatFileSize(item.size)}</span>` : ''}
-                </div>
-            </div>
-        `;
-        
-        return element;
-    }
-    
-    getStatusIcon(status, index) {
-        switch (status) {
-            case 'waiting': 
-                return index === 0 ? '🎯' : `<span style="font-size: 12px; font-weight: bold;">${index + 1}</span>`;
-            case 'current': 
-                return '<div class="download-spinner"></div>';
-            case 'completed': 
-                return '✅';
-            case 'failed': 
-                return '❌';
-            case 'skipped': 
-                return '⏩';
-            default: 
-                return '❓';
-        }
-    }
-    
-    getStatusText(item) {
-        const fileNum = item.index + 1;
-        const total = this.downloadQueueData.length;
-        
-        switch (item.status) {
-            case 'waiting': 
-                return `Waiting (${fileNum}/${total})`;
-            case 'current': 
-                return `Downloading now... (${fileNum}/${total})`;
-            case 'completed':
-                const duration = item.endTime && item.startTime ? 
-                    ` in ${((item.endTime - item.startTime) / 1000).toFixed(1)}s` : '';
-                return `Downloaded${duration}`;
-            case 'failed': 
-                const retryText = item.retries > 0 ? ` (retry ${item.retries})` : '';
-                return `Failed${retryText}`;
-            case 'skipped': 
-                return 'Skipped by user';
-            default: 
-                return 'Unknown';
-        }
-    }
-    
-    cancelAllDownloads() {
-        console.log('User cancelled all downloads');
-        
-        this.downloadQueueData.forEach(item => {
-            if (item.status === 'waiting' || item.status === 'current') {
-                item.status = 'cancelled';
-                item.endTime = Date.now();
-            }
-        });
-        
-        this.isDownloading = false;
-        this.waitingForUserConfirmation = false;
-        this.hideInstructions();
-        this.hideUserControls();
-        this.hidePauseButton();
-        this.hideResumeButton();
-        this.showStartButton();
-        
-        this.updateUI();
-        this.showToast('All downloads cancelled', 'info');
-    }
-    
-    clearDownloadData() {
-        console.log('Clearing download data');
-        
-        this.downloadQueueData = [];
-        this.currentDownloadIndex = 0;
-        this.completedDownloads = 0;
-        this.failedDownloads = 0;
-        this.isDownloading = false;
-        this.waitingForUserConfirmation = false;
-        
-        this.hideStartButton();
-        this.hidePauseButton();
-        this.hideResumeButton();
-        this.hideInstructions();
-        this.hideUserControls();
-        this.updateUI();
-    }
-    
-    delay(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
-    
-    sanitizeHTML(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-    
-    formatFileSize(bytes) {
-        if (!bytes || bytes === 0) return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
-    
-    showToast(message, type = 'info') {
-        if (window.Utils && window.Utils.showToast) {
-            if (type === 'success') window.Utils.showSuccess(message);
-            else if (type === 'warning') window.Utils.showWarning(message);
-            else if (type === 'error') window.Utils.showError(message);
-            else window.Utils.showInfo(message);
-        } else {
-            console.log(`${type.toUpperCase()}: ${message}`);
-        }
-    }
-    
-    hasActiveDownloads() {
-        return this.isDownloading;
-    }
-    
-    getQueueLength() {
-        return this.downloadQueueData.length;
-    }
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = DownloadManager;
-}
+        // Create iframe with force download attributes
+        const iframe = document.createElement('iframe');
+        iframe.style.cssText = 'display: none; width: 0; height: 0; border: none;';
+        iframe.
