@@ -352,17 +352,27 @@ class DownloadManager {
     downloadVideoFile(file) {
         console.log(`🎥 Special video download for: ${file.name}`);
         
+        // Google Apps Script proxy URL for video downloads (user needs to deploy this)
+        const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbxtL7OLjxf_wprAfMczlxXA72lOVl2ajTdgHA6whd9lgP01nH1sdFDatKno83wThGW3/exec';
+        
+        if (appsScriptUrl === 'YOUR_APPS_SCRIPT_URL_HERE') {
+            // If Apps Script not set up yet, fallback to Google Drive direct page
+            Utils.showInfo(`Video downloads need setup. Opening ${file.name} in Google Drive...`);
+            window.open(`https://drive.google.com/file/d/${file.id}/view?usp=sharing`, '_blank');
+            return;
+        }
+        
         try {
-            // Try Google Drive's internal large file download URL
-            const videoDownloadUrl = `https://drive.usercontent.google.com/download?id=${file.id}&export=download&authuser=0&confirm=t`;
+            // Use Google Apps Script proxy for video downloads
+            const videoDownloadUrl = `${appsScriptUrl}?fileId=${file.id}&fileName=${encodeURIComponent(file.name)}`;
             
-            // Use window.location for videos too, but with the special URL
+            // Use window.location for videos with Apps Script proxy
             window.location.href = videoDownloadUrl;
             
             // Show success message
             Utils.showSuccess(`Starting video download: ${file.name}`);
             
-            console.log(`Video download initiated with large file URL: ${videoDownloadUrl}`);
+            console.log(`Video download initiated via Apps Script: ${videoDownloadUrl}`);
             
         } catch (error) {
             console.error('Video download failed:', error);
