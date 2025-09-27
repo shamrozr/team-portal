@@ -316,53 +316,51 @@ class DownloadManager {
         }
     }
     
-    // Method 1: Single file download using direct URLs
-    async downloadSingleFile(file) {
-        console.log(`🎯 Method 1: Downloading single file: ${file.name}`);
+    // Method 1: Single file download using direct URL in same window (like before)
+    downloadSingleFile(file) {
+        console.log(`🎯 Method 1: Direct download for single file: ${file.name}`);
         
-        this.showWidget();
-        this.updateProgressSection(`Downloading ${file.name}...`, 0, 1);
+        // Check if it's a video file that needs special handling
+        const isVideo = this.isVideoFile(file);
+        
+        let downloadUrl;
+        if (isVideo) {
+            // For videos, use the export=download&confirm=t URL to force full file download
+            downloadUrl = `https://drive.google.com/uc?export=download&id=${file.id}&confirm=t`;
+        } else {
+            // For other files, use the standard direct download URL
+            downloadUrl = `https://drive.google.com/uc?export=download&id=${file.id}`;
+        }
         
         try {
-            const urls = this.getDirectDownloadURL(file.id);
-            let success = false;
+            // Direct download in same window (like the original behavior)
+            window.location.href = downloadUrl;
             
-            for (let i = 0; i < urls.length && !success; i++) {
-                try {
-                    console.log(`Trying URL ${i + 1}/${urls.length}: ${urls[i]}`);
-                    
-                    const response = await fetch(urls[i], {
-                        method: 'GET',
-                        headers: {
-                            'User-Agent': navigator.userAgent
-                        }
-                    });
-                    
-                    if (response.ok) {
-                        const blob = await response.blob();
-                        this.downloadBlob(blob, file.name);
-                        
-                        this.updateProgressSection(`✅ Downloaded: ${file.name}`, 1, 1);
-                        success = true;
-                        
-                        Utils.showSuccess(`Downloaded: ${file.name}`);
-                    } else {
-                        console.warn(`URL ${i + 1} failed with status: ${response.status}`);
-                    }
-                } catch (error) {
-                    console.warn(`URL ${i + 1} failed:`, error.message);
-                }
-            }
+            // Show success message
+            Utils.showSuccess(`Starting download: ${file.name}`);
             
-            if (!success) {
-                throw new Error('All download URLs failed');
-            }
+            console.log(`Single file download initiated: ${downloadUrl}`);
             
         } catch (error) {
             console.error('Single file download failed:', error);
-            this.updateProgressSection(`❌ Failed: ${file.name}`, 0, 1);
-            Utils.showError(`Failed to download ${file.name}: ${error.message}`);
+            Utils.showError(`Failed to start download: ${file.name}`);
         }
+    }
+    
+    // Helper method to detect video files
+    isVideoFile(file) {
+        if (!file) return false;
+        
+        // Check by MIME type first
+        if (file.mimeType && file.mimeType.startsWith('video/')) {
+            return true;
+        }
+        
+        // Check by file extension as fallback
+        const extension = file.name.split('.').pop()?.toLowerCase();
+        const videoExtensions = ['mp4', 'avi', 'mov', 'wmv', 'flv', 'webm', 'mkv', 'm4v', '3gp', 'ogv'];
+        
+        return videoExtensions.includes(extension);
     }
     
     // Method 1: Multiple files download using JSZip
@@ -449,6 +447,7 @@ class DownloadManager {
             
             console.log(`Downloading file ${index + 1}/${this.downloadQueueData.length}: ${item.name}`);
             
+            // For ZIP downloads, use fetch method to get proper file data
             const urls = this.getDirectDownloadURL(item.id);
             let success = false;
             
@@ -458,17 +457,23 @@ class DownloadManager {
                     
                     if (response.ok) {
                         const blob = await response.blob();
-                        this.zip.file(item.name, blob);
                         
-                        item.status = 'completed';
-                        this.zipProgress.downloaded++;
-                        success = true;
-                        
-                        this.updateProgressSection(
-                            `Downloaded ${this.zipProgress.downloaded}/${this.zipProgress.total} files...`,
-                            this.zipProgress.downloaded,
-                            this.zipProgress.total
-                        );
+                        // Verify we got a proper file size (not a tiny preview)
+                        if (blob.size > 1000 || !this.isVideoFile(item)) { // Allow small non-video files
+                            this.zip.file(item.name, blob);
+                            
+                            item.status = 'completed';
+                            this.zipProgress.downloaded++;
+                            success = true;
+                            
+                            this.updateProgressSection(
+                                `Downloaded ${this.zipProgress.downloaded}/${this.zipProgress.total} files...`,
+                                this.zipProgress.downloaded,
+                                this.zipProgress.total
+                            );
+                        } else {
+                            console.warn(`File ${item.name} seems too small (${blob.size} bytes), trying next URL...`);
+                        }
                     }
                 } catch (error) {
                     console.warn(`URL ${i + 1} failed for ${item.name}:`, error.message);
@@ -476,7 +481,7 @@ class DownloadManager {
             }
             
             if (!success) {
-                throw new Error('All URLs failed');
+                throw new Error('All URLs failed or file too small');
             }
             
         } catch (error) {
@@ -535,7 +540,7 @@ class DownloadManager {
     }
     
     // Test Method 1
-    async testMethod1() {
+    testMethod1() {
         console.log('🧪 Testing Method 1: Direct Download + JSZip');
         
         // Create test file object (you can replace with actual file ID for testing)
@@ -546,11 +551,9 @@ class DownloadManager {
             mimeType: 'text/csv'
         };
         
-        this.showWidget();
-        
         try {
-            Utils.showInfo('Testing Method 1: Direct Download URLs...');
-            await this.downloadSingleFile(testFile);
+            Utils.showInfo('Testing Method 1: Direct Download URL...');
+            this.downloadSingleFile(testFile);
         } catch (error) {
             console.error('Test failed:', error);
             Utils.showError(`Test failed: ${error.message}`);
