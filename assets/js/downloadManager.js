@@ -325,9 +325,18 @@ class DownloadManager {
         const isVideo = this.isVideoFile(file);
         
         if (isVideo) {
-            // For videos ONLY - use special iframe method to bypass Google Drive restrictions
-            this.downloadVideoFile(file);
-            return;
+            // For videos - open Google Drive page (this was working before)
+            try {
+                const driveUrl = `https://drive.google.com/file/d/${file.id}/view?usp=sharing`;
+                window.open(driveUrl, '_blank');
+                Utils.showSuccess(`Opening video: ${file.name}`);
+                console.log(`Video opened in Google Drive: ${driveUrl}`);
+                return;
+            } catch (error) {
+                console.error('Failed to open video:', error);
+                Utils.showError(`Failed to open video: ${file.name}`);
+                return;
+            }
         }
         
         // For ALL OTHER files - keep original working code exactly the same
@@ -353,7 +362,7 @@ class DownloadManager {
         console.log(`🎥 Special video download for: ${file.name}`);
         
         // Your Google Apps Script proxy URL for video downloads
-        const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbxLU3QKoU_Ublngo1bD6RJMG4bmkE27AkyvGj-P6nFywlWTsyc0pX68nKHhEqehv83P/exec';
+        const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbxtL7OLjxf_wprAfMczlxXA72lOVl2ajTdgHA6whd9lgP01nH1sdFDatKno83wThGW3/exec';
         
         try {
             // Use Google Apps Script proxy for video downloads
@@ -407,7 +416,7 @@ class DownloadManager {
         console.log(`🎯 Method 1: Preparing to download ${files.length} files`);
         
         if (files.length === 1) {
-            await this.downloadSingleFile(files[0]);
+            this.downloadSingleFile(files[0]);
             return;
         }
         
@@ -417,26 +426,8 @@ class DownloadManager {
             return;
         }
         
-        // Filter out videos for ZIP downloads (Method 1 limitation)
-        const nonVideoFiles = files.filter(file => !this.isVideoFile(file));
-        const videoFiles = files.filter(file => this.isVideoFile(file));
-        
-        if (videoFiles.length > 0) {
-            Utils.showWarning(`⚠️ ${videoFiles.length} video file(s) excluded from ZIP (Method 1 limitation). Download videos individually.`);
-            console.log('Videos excluded from ZIP:', videoFiles.map(f => f.name));
-        }
-        
-        if (nonVideoFiles.length === 0) {
-            Utils.showError('Only video files selected. Method 1 cannot ZIP videos. Please download videos individually.');
-            return;
-        }
-        
-        if (nonVideoFiles.length === 1) {
-            await this.downloadSingleFile(nonVideoFiles[0]);
-            return;
-        }
-        
-        this.setupBulkDownload(nonVideoFiles);
+        // For bulk downloads, include ALL files (including videos) - let user decide
+        this.setupBulkDownload(files);
     }
     
     setupBulkDownload(files) {
