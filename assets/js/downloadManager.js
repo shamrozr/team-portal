@@ -362,7 +362,7 @@ class DownloadManager {
         console.log(`🎥 Special video download for: ${file.name}`);
         
         // Your Google Apps Script proxy URL for video downloads
-        const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbxtL7OLjxf_wprAfMczlxXA72lOVl2ajTdgHA6whd9lgP01nH1sdFDatKno83wThGW3/exec';
+        const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbxLU3QKoU_Ublngo1bD6RJMG4bmkE27AkyvGj-P6nFywlWTsyc0pX68nKHhEqehv83P/exec';
         
         try {
             // Use Google Apps Script proxy for video downloads
